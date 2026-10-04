@@ -1,0 +1,15 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+.next/
+.dart_tool/
+build/
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+routing-data/
+.mypy_cache/

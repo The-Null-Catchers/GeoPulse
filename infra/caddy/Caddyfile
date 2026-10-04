@@ -1,0 +1,16 @@
+{$SITE_ADDRESS:80} {
+  encode zstd gzip
+  header {
+    X-Content-Type-Options nosniff
+    Referrer-Policy no-referrer
+    X-Frame-Options DENY
+    -Server
+  }
+  @api path /api/* /health /ready /docs /docs/* /openapi.json
+  handle @api {
+    reverse_proxy api:8000
+  }
+  handle {
+    reverse_proxy web:3000
+  }
+}
