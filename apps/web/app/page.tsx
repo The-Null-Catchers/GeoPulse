@@ -46,6 +46,7 @@ export default function Home(){
   void connect();const resync=setInterval(refresh,30000);return()=>{stopped=true;clearTimeout(timer);clearInterval(resync);ws?.close();};
  },[session,refresh]);
  useEffect(()=>{if(!session||!mapContainer.current)return;setMapReady(false);const m=new maplibregl.Map({container:mapContainer.current,style:mapStyle(light),center:[34.46,31.51],zoom:12,attributionControl:{compact:true}});map.current=m;
+  m.on('movestart',()=>setMapReady(false));m.on('idle',()=>setMapReady(true));
   m.addControl(new maplibregl.NavigationControl(),'bottom-left');m.addControl(new maplibregl.FullscreenControl(),'bottom-left');
   m.on('load',()=>{
    setMapReady(true);

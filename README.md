@@ -42,9 +42,9 @@ The simulator service does not automatically start with the main stack. `--seed`
 | Optimization | Deterministic nearest-neighbour + 2-opt | Haversine distance, not road-time/VRP optimization |
 | Spatial queries | PostGIS radius search, historical grid heatmap | Full polygon/closest/route search UI pending |
 | Dashboard | Live clustered map, state filter/search, follow/fit, device panel, polygon drawing, replay, alerts, trips CSV | Team/type filters, route editor and many management screens pending |
-| Developer API | OpenAPI, hashed scoped expiring/revocable API keys, audit log, saved-view endpoints | Signed/retried webhooks and delivery history implemented; broader SDKs pending |
+| Developer API | OpenAPI, scoped hashed API keys, audit, saved views, signed durable webhooks and delivery history | Broader SDKs pending |
 | Privacy | Explicit foreground consent, disable device, delete device history, retention for GPS and derived history | Full-device exports and completed privacy UX pending |
-| Mobile | Operator map/polling, secure token store, foreground tracking, SQLite offline batch queue | Flutter source has not yet been analyzed/run on hardware; no background tracking |
+| Mobile | Operator map/polling, secure token store, foreground tracking, SQLite offline batch queue | Analyzer/queue/widget tests passed; physical hardware and background tracking pending |
 
 ## Architecture
 
