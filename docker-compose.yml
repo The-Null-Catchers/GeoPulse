@@ -83,6 +83,9 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_TILE_URL: ${NEXT_PUBLIC_TILE_URL:-}
+        NEXT_PUBLIC_TILE_ATTRIBUTION: ${NEXT_PUBLIC_TILE_ATTRIBUTION:-© OpenStreetMap contributors}
     ports: ["127.0.0.1:3000:3000"]
     depends_on:
       api:

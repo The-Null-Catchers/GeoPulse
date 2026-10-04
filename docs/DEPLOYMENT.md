@@ -16,6 +16,10 @@ Set `SITE_ADDRESS=geo.example.org`, point its DNS at your host, set `CORS_ORIGIN
 
 Configure resource limits and host firewalls, automated database backups, tested restore, alerting and tile-provider terms before serving real operational data. Restrict access to the internal API/metrics network. Monitor outbox age, not only API HTTP health. Migration rollback is not automated; test migrations on a restored staging backup before deployment. Remote CI built both application images and started the Compose stack. A production host deployment and backup/restore drill remain unverified.
 
+## Basemap configuration
+
+The browser defaults to OpenStreetMap raster tiles for a small interactive demo. Use `NEXT_PUBLIC_TILE_URL` and `NEXT_PUBLIC_TILE_ATTRIBUTION` to configure a self-hosted or licensed XYZ service, then rebuild the web image. These are public browser build settings, not secret credentials. CSP permits that tile origin. Dark mode mutes the raster layer; it does not rely on an unconfigured CARTO API key. Keep visible attribution and comply with the [OSMF tile policy](https://operations.osmfoundation.org/policies/tiles/): no bulk/offline download, normal browser caching and an origin Referer. OSM has no availability SLA and should not be treated as a production fleet basemap contract. Mobile provider configuration remains a follow-up.
+
 ## Webhooks
 
 The environment generator creates `WEBHOOK_ENCRYPTION_KEY`. Keep it stable across replicas, backups and restarts; losing it prevents existing hooks from signing. Set `WEBHOOK_ALLOWED_HOSTS` to a comma-separated exact list of approved public receiver hosts. An empty list disables destination provisioning. The dedicated `webhook-worker` handles delivery without blocking spatial processing. See [WEBHOOKS.md](WEBHOOKS.md) for retries and receiver validation.

@@ -2,7 +2,7 @@
 
 ## Boundaries
 
-FastAPI handles identity, workspace authorization, validation, ingestion and spatial read APIs. A separate Python worker handles derived operational state. PostgreSQL is the authority. Redis carries ephemeral realtime events, rate limits, short-lived WebSocket tickets and worker heartbeat. MapLibre renders GeoJSON via native sources/layers. Flutter sends explicit, foreground-only GPS samples; its operator screen presently polls.
+FastAPI handles identity, workspace authorization, validation, ingestion and spatial read APIs. A separate Python worker handles derived operational state. A dedicated HTTPS dispatcher leases durable webhook jobs without blocking spatial processing. PostgreSQL is the authority. Redis carries ephemeral realtime events, rate limits, short-lived WebSocket tickets and worker heartbeat. MapLibre renders GeoJSON via native sources/layers. Flutter sends explicit, foreground-only GPS samples; its operator screen presently polls.
 
 The monorepo avoids a framework-heavy abstraction layer: SQL is explicit, parameterized and versioned. Dynamic table identifiers use `psycopg.sql.Identifier` and a fixed internal registry. Team/driver/vehicle/device/route/fence cross-relations use `(workspace_id,id)` constraints to prevent cross-tenant associations even if an application check regresses. REST selectors always constrain workspace IDs. Authorization does not trust IDs provided by the browser.
 
@@ -13,7 +13,8 @@ The monorepo avoids a framework-heavy abstraction layer: SQL is explicit, parame
 3. **Ordered single spatial processor in this milestone**: an advisory lock serializes processing transactions. Multi-worker per-device partitioning is not implemented. Launch one worker for this release. This favors demonstrated correctness over unjustified horizontal scale claims.
 4. **No SQLite substitution for geospatial integration**: integration tests explicitly require real PostGIS and Redis.
 5. **Road routing is an adapter**: absent/unavailable OSRM returns 503, not a straight line mislabeled as a road route. Stop optimization is a separately labeled spherical-distance heuristic.
-6. **Mobile privacy before background service work**: collection stops on pause/detach and requires explicit consent and OS permission. Background tracking is not claimed until lifecycle, platform integration and physical-device tests exist.
+6. **Webhook jobs are independent of realtime fan-out**: subscriptions are scheduled in the processed-event transaction, unique delivery IDs prevent repeat scheduling, and the network worker uses bounded public-only HTTPS transport. Retries remain durable when Redis is unavailable; Redis heartbeat health still protects operation of the worker.
+7. **Mobile privacy before background service work**: collection stops on pause/detach and requires explicit consent and OS permission. Background tracking is not claimed until lifecycle, platform integration and physical-device tests exist.
 
 ## Transaction paths
 

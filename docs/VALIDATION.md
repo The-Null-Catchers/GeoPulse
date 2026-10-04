@@ -17,12 +17,16 @@
 
 The FastAPI TestClient emitted a deprecation notice for its current httpx adapter; tests passed. Updating that test adapter is a maintenance task, not a waived failure.
 
+## Remote CI evidence
+
+[Run 37239362834](https://github.com/The-Null-Catchers/GeoPulse/actions/runs/37239362834), commit `f198289`: all seven jobs passed (backend, web, Flutter, Docker, Playwright, dependency audit and secret scan). Compose included the webhook dispatcher. Flutter analyze and both tests passed. Playwright authenticated a real workspace, ingested GPS, observed the live connection and persisted position, and checked phone sign-in layout.
+
+Visual inspection of the resulting screenshot exposed a CARTO key watermark despite passing functional tests. The next commit replaces that unconfigured dependency with a configurable XYZ basemap and adds a second GPS update with device-list resync blocked. This follow-up requires its own green run and new visual review.
+
 ## Not verified
 
-- Updated webhook worker Docker image and Compose startup await the next CI run. The initial remote run successfully built both images and started the original stack.
-- Full green GitHub Actions run: the initial run passed backend, web, Docker and secret scanning. Dependency, browser and Flutter findings are repaired in the next commit and require rerun.
-- Flutter analyzer and SQLite queue test passed remotely. Widget test timed out on FFI I/O inside fake time; the test is repaired and awaits rerun. Hardware/background tests remain unverified.
-- Browser E2E: initial remote mobile-layout login passed; live-socket scenario failed. The API image lacked its WebSocket runtime dependency; it is now included. Full rerun and screenshots pending.
+- Mobile hardware/background operation and Android/iOS release builds remain unverified.
+- Configurable basemap visual review and strengthened realtime E2E await the follow-up run.
 - OSRM image and actual road dataset: adapter implemented, live provider validation pending.
 - Independent security/dependency/secret scans and production HTTPS deployment.
 
@@ -30,7 +34,7 @@ The FastAPI TestClient emitted a deprecation notice for its current httpx adapte
 
 | Requested phase | Status |
 |---|---|
-| 1: architecture/infra/auth/workspaces/RBAC | Implemented source; Docker build/initial Compose verified; full green CI pending |
+| 1: architecture/infra/auth/workspaces/RBAC | Implemented source; Docker/Compose and CI verified; production deployment pending |
 | 2: devices/GPS/persistence/simulator/map | Core implemented and backend integration-tested |
 | 3: realtime/presence/states/details | Core tested; expanded filters/scale/backpressure pending |
 | 4: history/trips/stops/replay | Core implemented; late-derived reconciliation and event overlays pending |
@@ -40,7 +44,7 @@ The FastAPI TestClient emitted a deprecation notice for its current httpx adapte
 | 8: Flutter/background/offline | Foreground source and queue foundation; background/hardware work pending |
 | 9: webhooks/reports/keys/audit | Keys/audit/saved-view APIs/trip CSV implemented; signed durable webhooks implemented; more exports pending |
 | 10: performance/partitioning/security | 100-device test and regression controls; partitioning/soak/external security pending |
-| 11: E2E/CI/Docker/monitoring | Remote checks running; browser/mobile repairs await rerun |
+| 11: E2E/CI/Docker/monitoring | All seven remote jobs passed; visual/realtime follow-up underway |
 | 12: portfolio/release | Architecture/docs/evidence present; verified screenshots/demo/release pending |
 
 ## Continue from here

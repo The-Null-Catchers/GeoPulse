@@ -5,6 +5,9 @@ RUN npm ci
 FROM deps AS build
 COPY apps/web ./
 ENV NEXT_TELEMETRY_DISABLED=1 API_INTERNAL_URL=http://api:8000
+ARG NEXT_PUBLIC_TILE_URL=https://tile.openstreetmap.org/{z}/{x}/{y}.png
+ARG NEXT_PUBLIC_TILE_ATTRIBUTION="© OpenStreetMap contributors"
+ENV NEXT_PUBLIC_TILE_URL=$NEXT_PUBLIC_TILE_URL NEXT_PUBLIC_TILE_ATTRIBUTION=$NEXT_PUBLIC_TILE_ATTRIBUTION
 RUN npm run build
 FROM node:22-alpine AS runtime
 WORKDIR /app

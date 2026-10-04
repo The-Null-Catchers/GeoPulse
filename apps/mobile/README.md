@@ -15,4 +15,4 @@ Add Android `INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` permiss
 
 Run with `flutter run --dart-define=API_URL=https://YOUR_DOMAIN`. The operator mode currently polls every 5 seconds; this is explicit, rather than presented as WebSocket realtime. Tracker mode rejects plain HTTP and stops when the app leaves the foreground. Queue retry resumes only while tracking is explicitly enabled. Pending records retain UUIDs and original timestamps.
 
-A malformed/rejected batch remains queued; retry/quarantine tooling and hardware battery measurements remain release blockers. Platform folders are generated rather than checked in for this initial source milestone. The Flutter analyzer and tests have not been executed in the current environment.
+A malformed/rejected batch remains queued; retry/quarantine tooling and hardware battery measurements remain release blockers. Platform folders are generated rather than checked in for this initial source milestone. The Flutter analyzer and both queue/widget tests passed in GitHub Actions. Physical-device GPS, background lifecycle and platform release builds remain unverified.

@@ -114,7 +114,7 @@ The current local evidence is **50 passing backend tests**, including real PostG
 
 A measured run used 100 devices, updates every 2 seconds, and 3 WebSocket clients. All 1,000 accepted points reached every client, with no HTTP errors. Measured latency and resource scope are recorded in [docs/load-test-result.json](docs/load-test-result.json), not estimated. This short local test is not a production sizing guarantee.
 
-GitHub Actions runs backend, web, mobile, Docker, browser integration, dependency audits and secret scanning. The initial remote run passed backend/web builds, Docker images and secret scanning; it exposed a MapLibre advisory, a missing WebSocket runtime dependency and a Flutter widget-test timeout. These findings are being repaired and checked again. See [validation evidence](docs/VALIDATION.md); no full green release is claimed until all checks pass.
+All seven GitHub Actions jobs passed on [run 37239362834](https://github.com/The-Null-Catchers/GeoPulse/actions/runs/37239362834): backend, web, Flutter, Docker, browser integration, dependency audit and secret scan. Visual review then exposed an unconfigured CARTO key watermark; the configurable basemap repair and stronger realtime assertion are undergoing follow-up validation. See [validation evidence](docs/VALIDATION.md).
 
 ```sh
 RUN_INTEGRATION=1 pytest -q
