@@ -1,0 +1,5 @@
+[extend]
+useDefault = true
+[allowlist]
+description = "Deliberate nonproduction test credentials only"
+paths = ['''apps/api/tests/.*''', '''\.github/workflows/ci\.yml''']
