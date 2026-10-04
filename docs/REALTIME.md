@@ -23,3 +23,7 @@ Heartbeats are sent every ~20s. Clients deduplicate outbox IDs, reconnect with b
 - Redis WebSocket connection metric is approximate and can drift after abrupt process loss.
 
 See `scripts/load-test.py` for a 100-device/multiple-subscriber validation scenario and `docs/load-test-result.json` for measured evidence.
+
+## Durable webhook delivery
+
+Spatial processing also inserts subscribed webhook delivery rows in the same transaction as its processed outbox payload. Unique webhook/event IDs prevent duplicate scheduling. The separate webhook worker leases jobs with SKIP LOCKED, performs signed HTTPS requests outside database transactions and persists each attempt. Redis outages do not erase delivery jobs. See [WEBHOOKS.md](WEBHOOKS.md).

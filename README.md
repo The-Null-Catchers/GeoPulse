@@ -5,7 +5,7 @@
 GeoPulse persists device locations in PostgreSQL/PostGIS, processes operational events through a transactional outbox, and broadcasts workspace-scoped updates through Redis and authenticated WebSockets. The dashboard uses MapLibre native layers and clustering; its historical player advances by recorded timestamps.
 
 > **v0.1.0 — verified engineering foundation, not a completed production release.**
-> The core ingestion → PostGIS → worker → Redis → WebSocket pipeline is operational and tested. The larger product brief remains the roadmap. Flutter background tracking, webhook delivery, full workflow coverage and external release validation are pending.
+> The core ingestion → PostGIS → worker → Redis → WebSocket pipeline is operational and tested. The larger product brief remains the roadmap. Flutter background tracking, full workflow coverage and release validation remain pending. Signed webhooks now have durable delivery, retries and SSRF protection.
 
 ## Quick start
 
@@ -42,7 +42,7 @@ The simulator service does not automatically start with the main stack. `--seed`
 | Optimization | Deterministic nearest-neighbour + 2-opt | Haversine distance, not road-time/VRP optimization |
 | Spatial queries | PostGIS radius search, historical grid heatmap | Full polygon/closest/route search UI pending |
 | Dashboard | Live clustered map, state filter/search, follow/fit, device panel, polygon drawing, replay, alerts, trips CSV | Team/type filters, route editor and many management screens pending |
-| Developer API | OpenAPI, hashed scoped expiring/revocable API keys, audit log, saved-view endpoints | Webhook delivery and broader SDKs pending |
+| Developer API | OpenAPI, hashed scoped expiring/revocable API keys, audit log, saved-view endpoints | Signed/retried webhooks and delivery history implemented; broader SDKs pending |
 | Privacy | Explicit foreground consent, disable device, delete device history, retention for GPS and derived history | Full-device exports and completed privacy UX pending |
 | Mobile | Operator map/polling, secure token store, foreground tracking, SQLite offline batch queue | Flutter source has not yet been analyzed/run on hardware; no background tracking |
 
@@ -110,11 +110,11 @@ Use a current original UTC timestamp in real requests. Old timestamps outside wo
 
 ## Tests and evidence
 
-The current local evidence is **22 passing backend tests**, including real PostGIS/Redis integration tests, **4 passing replay tests**, passing Ruff/mypy, TypeScript checking and Next.js production build. See [docs/VALIDATION.md](docs/VALIDATION.md) for the exact evidence and what was not executed.
+The current local evidence is **50 passing backend tests**, including real PostGIS/Redis integration tests, **4 passing replay tests**, passing Ruff/mypy, TypeScript checking and Next.js production build. See [docs/VALIDATION.md](docs/VALIDATION.md) for the exact evidence and what was not executed.
 
 A measured run used 100 devices, updates every 2 seconds, and 3 WebSocket clients. All 1,000 accepted points reached every client, with no HTTP errors. Measured latency and resource scope are recorded in [docs/load-test-result.json](docs/load-test-result.json), not estimated. This short local test is not a production sizing guarantee.
 
-GitHub Actions is provided for backend, web, mobile, Docker, browser integration and dependency audits. **No remote CI run or green badge is claimed.** Playwright specs exist but browser execution/screenshots were blocked by a failed Chromium download in this environment. No screenshots are presented as verified evidence yet.
+GitHub Actions runs backend, web, mobile, Docker, browser integration, dependency audits and secret scanning. The initial remote run passed backend/web builds, Docker images and secret scanning; it exposed a MapLibre advisory, a missing WebSocket runtime dependency and a Flutter widget-test timeout. These findings are being repaired and checked again. See [validation evidence](docs/VALIDATION.md); no full green release is claimed until all checks pass.
 
 ```sh
 RUN_INTEGRATION=1 pytest -q
@@ -135,4 +135,4 @@ cd apps/web && npm run typecheck && npm test && npm run build
 
 ## Next release gates
 
-Complete mobile platform scaffolding and background lifecycle, integration-test the OSRM adapter against a real road dataset, implement signed/retried webhook delivery with SSRF protections, rebuild derived histories after late points, expand management workflows/reports/search, and execute browser/hardware/security/release tests. Time partitioning and bulk-write optimization should follow measured requirements, with a 1,000-device soak run before any larger-scale claim.
+Complete mobile platform scaffolding and background lifecycle, integration-test the OSRM adapter against a real road dataset, rebuild derived histories after late points, expand management workflows/reports/search, and execute browser/hardware/security/release tests. Time partitioning and bulk-write optimization should follow measured requirements, with a 1,000-device soak run before any larger-scale claim.

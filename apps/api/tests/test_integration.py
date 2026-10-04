@@ -17,6 +17,14 @@ def client():
         yield c
 
 
+@pytest.fixture(autouse=True)
+def independent_registration_budget(client):
+    # Each scenario has its own admission budget; dedicated regression below checks the actual limit.
+    from geopulse.db import redis
+
+    client.portal.call(redis.delete, "rate:register:testclient")
+
+
 def account(client):
     uid = str(uuid4())[:8]
     r = client.post(
@@ -253,3 +261,109 @@ def test_invalid_polygon_topology(client):
         client.post("/api/v1/geofences", headers=h, json={"name": "Invalid bow tie", "geometry": geometry}).status_code
         == 422
     )
+
+
+def test_webhooks_durable_queue_retry_delivery_isolation_and_privacy(client, monkeypatch, tmp_path):
+    from dataclasses import replace
+    from cryptography.fernet import Fernet
+    from aiohttp import web
+    from geopulse import webhooks as hooks
+    from geopulse.db import pool
+    from test_webhooks import receiver
+
+    monkeypatch.setattr(
+        hooks,
+        "settings",
+        replace(
+            hooks.settings,
+            webhook_encryption_key=Fernet.generate_key().decode(),
+            webhook_allowed_hosts=("receiver.test",),
+        ),
+    )
+    a, h = account(client)
+    b, hb = account(client)
+    dev = create_device(client, h)
+    created = client.post(
+        "/api/v1/webhooks",
+        headers=h,
+        json={"name": "Alert receiver", "url": "https://receiver.test/hook", "event_types": ["alert.created"]},
+    )
+    assert created.status_code == 201, created.text
+    hook = created.json()
+    assert hook["signing_secret"] not in client.get("/api/v1/webhooks", headers=h).text
+    assert client.get("/api/v1/webhooks", headers=hb).json() == []
+    assert client.patch("/api/v1/webhooks/" + hook["id"], headers=hb, json={"enabled": False}).status_code == 404
+    assert (
+        client.post(
+            "/api/v1/locations", headers={"Authorization": "Bearer " + dev["token"]}, json=gps(speed=35)
+        ).status_code
+        == 202
+    )
+    drain(client)
+    deliveries = client.get("/api/v1/webhook-deliveries", headers=h).json()
+    assert len(deliveries) == 1 and deliveries[0]["state"] == "pending"
+    delivery = deliveries[0]
+    assert client.get("/api/v1/webhook-deliveries/" + delivery["id"] + "/attempts", headers=hb).status_code == 404
+
+    async def network_delivery():
+        import hashlib
+        import hmac
+
+        seen = []
+
+        async def handle(request):
+            body = await request.read()
+            signed = (
+                request.headers["X-GeoPulse-Timestamp"].encode()
+                + b"."
+                + request.headers["X-GeoPulse-Delivery"].encode()
+                + b"."
+                + body
+            )
+            assert hmac.compare_digest(
+                request.headers["X-GeoPulse-Signature"],
+                "v1=" + hmac.new(hook["signing_secret"].encode(), signed, hashlib.sha256).hexdigest(),
+            )
+            seen.append(request.headers["X-GeoPulse-Delivery"])
+            return web.Response(status=503 if len(seen) == 1 else 204)
+
+        runner = await receiver(monkeypatch, tmp_path, handle)
+        try:
+            assert await hooks.deliver_once()
+            async with pool.connection() as conn:
+                row = await (
+                    await conn.execute(
+                        "SELECT state,attempts,last_http_status FROM webhook_deliveries WHERE id=%s", (delivery["id"],)
+                    )
+                ).fetchone()
+                assert row["state"] == "retry" and row["attempts"] == 1 and row["last_http_status"] == 503
+                await conn.execute("UPDATE webhook_deliveries SET next_attempt_at=now() WHERE id=%s", (delivery["id"],))
+            assert await hooks.deliver_once()
+            assert seen == [delivery["id"], delivery["id"]]
+        finally:
+            await runner.cleanup()
+
+    client.portal.call(network_delivery)
+    report = client.get("/api/v1/webhook-deliveries", headers=h).json()[0]
+    assert report["state"] == "delivered" and report["attempts"] == 2
+    attempts = client.get("/api/v1/webhook-deliveries/" + delivery["id"] + "/attempts", headers=h).json()
+    assert [a["http_status"] for a in attempts] == [503, 204]
+    rotated = client.post("/api/v1/webhooks/" + hook["id"] + "/rotate-secret", headers=h)
+    assert rotated.status_code == 200 and rotated.json()["signing_secret"] != hook["signing_secret"]
+    assert client.delete("/api/v1/devices/" + dev["id"] + "/history", headers=h).status_code == 204
+    assert client.get("/api/v1/webhook-deliveries", headers=h).json() == []
+
+
+def test_registration_rate_limit_is_enforced(client):
+    for _ in range(10):
+        account(client)
+    r = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": str(uuid4()) + "@example.test",
+            "name": "Rate test",
+            "organization": "Rate test",
+            "password": "test-only-passphrase-123",
+        },
+    )
+    assert r.status_code == 429 and r.headers["Retry-After"] == "3600"

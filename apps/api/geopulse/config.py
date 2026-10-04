@@ -10,6 +10,11 @@ class Settings:
     origins: tuple[str, ...] = tuple(os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","))
     routing_url: str = os.getenv("ROUTING_URL", "")
 
+    webhook_encryption_key: str = os.getenv("WEBHOOK_ENCRYPTION_KEY", "")
+    webhook_allowed_hosts: tuple[str, ...] = tuple(
+        h.strip().lower() for h in os.getenv("WEBHOOK_ALLOWED_HOSTS", "").split(",") if h.strip()
+    )
+
     def validate(self):
         if len(self.jwt_secret) < 32:
             raise RuntimeError("JWT_SECRET must be at least 32 characters")

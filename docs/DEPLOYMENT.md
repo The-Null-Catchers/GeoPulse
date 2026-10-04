@@ -14,7 +14,11 @@ Ports: Caddy 80/443, API 8000 and web 3000 on host loopback only. PostGIS and Re
 
 Set `SITE_ADDRESS=geo.example.org`, point its DNS at your host, set `CORS_ORIGINS=https://geo.example.org`, and `COOKIE_SECURE=true`. Caddy manages HTTPS. Replace generated demo credentials or omit simulator variables for a production deployment. Keep `.env` outside git, mode 0600, and source deployment secrets through your host's secret manager where available. `JWT_SECRET` must be at least 32 characters; generated value is longer.
 
-Configure resource limits and host firewalls, automated database backups, tested restore, alerting and tile-provider terms before serving real operational data. Restrict access to the internal API/metrics network. Monitor outbox age, not only API HTTP health. Migration rollback is not automated; test migrations on a restored staging backup before deployment. No production host or remote CI deployment was performed in this milestone.
+Configure resource limits and host firewalls, automated database backups, tested restore, alerting and tile-provider terms before serving real operational data. Restrict access to the internal API/metrics network. Monitor outbox age, not only API HTTP health. Migration rollback is not automated; test migrations on a restored staging backup before deployment. Remote CI built both application images and started the Compose stack. A production host deployment and backup/restore drill remain unverified.
+
+## Webhooks
+
+The environment generator creates `WEBHOOK_ENCRYPTION_KEY`. Keep it stable across replicas, backups and restarts; losing it prevents existing hooks from signing. Set `WEBHOOK_ALLOWED_HOSTS` to a comma-separated exact list of approved public receiver hosts. An empty list disables destination provisioning. The dedicated `webhook-worker` handles delivery without blocking spatial processing. See [WEBHOOKS.md](WEBHOOKS.md) for retries and receiver validation.
 
 ## Routing data
 

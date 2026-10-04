@@ -12,6 +12,7 @@ from geopulse.config import settings
 from geopulse.db import pool, redis, one, many
 from geopulse.main import emit
 from geospatial import state
+from geopulse.webhooks import enqueue
 
 log = logging.getLogger("worker")
 stopping = asyncio.Event()
@@ -285,6 +286,7 @@ async def drain_once():
                 "UPDATE outbox SET processed_at=now(),topic=%s,payload=%s WHERE id=%s",
                 (topic, Jsonb(payload), row["id"]),
             )
+            await enqueue(conn, row["workspace_id"], row["id"], payload)
         else:
             payload = row["payload"]
     # A Redis failure leaves the processed row pending. Consumers deduplicate outbox IDs.
@@ -311,6 +313,7 @@ async def maintenance():
           SELECT e.id FROM location_events e JOIN organizations o ON o.id=e.workspace_id
           WHERE e.recorded_at<now()-make_interval(days=>o.retention_days) LIMIT 1000)""")
         await conn.execute("DELETE FROM outbox WHERE published_at<now()-interval '7 days'")
+        await conn.execute("DELETE FROM webhook_deliveries WHERE created_at<now()-interval '30 days'")
         # Apply the same workspace retention policy to derived history, not only raw GPS.
         for table, column in (
             ("trips", "started_at"),

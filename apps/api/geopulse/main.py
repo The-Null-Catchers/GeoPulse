@@ -358,6 +358,9 @@ async def delete_history(device_id: UUID, ws=Depends(require("admin"))):
         )
         if not row:
             raise HTTPException(404, "Device not found")
+        await conn.execute(
+            "DELETE FROM webhook_deliveries WHERE device_id=%s AND workspace_id=%s", (device_id, ws["id"])
+        )
         await conn.execute("DELETE FROM location_events WHERE device_id=%s", (device_id,))
         for table in ("device_status", "trips", "stops", "geofence_state", "historical_metrics", "alerts"):
             await conn.execute(
@@ -953,3 +956,8 @@ async def role_update(user_id: UUID, body: RoleUpdate, ws=Depends(require("owner
             raise HTTPException(404, "Non-owner membership not found")
         await audit(conn, ws, "membership.role_changed", user_id)
     return row
+
+
+from .webhooks import router as webhook_router  # noqa: E402
+
+app.include_router(webhook_router)

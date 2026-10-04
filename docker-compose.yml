@@ -9,6 +9,8 @@ x-app: &app
     CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
     COOKIE_SECURE: ${COOKIE_SECURE:-true}
     ROUTING_URL: ${ROUTING_URL:-}
+    WEBHOOK_ENCRYPTION_KEY: ${WEBHOOK_ENCRYPTION_KEY:-}
+    WEBHOOK_ALLOWED_HOSTS: ${WEBHOOK_ALLOWED_HOSTS:-}
   restart: unless-stopped
   init: true
   depends_on:
@@ -63,6 +65,17 @@ services:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import os,redis; assert redis.Redis.from_url(os.environ['REDIS_URL']).get('worker:heartbeat')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  webhook-worker:
+    <<: *app
+    command: ["python", "-m", "worker.webhooks"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,redis; assert redis.Redis.from_url(os.environ['REDIS_URL']).get('webhook-worker:heartbeat')"]
       interval: 15s
       timeout: 5s
       retries: 5
