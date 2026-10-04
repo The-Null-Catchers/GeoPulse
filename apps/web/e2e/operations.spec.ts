@@ -1,5 +1,6 @@
 import {test,expect} from '@playwright/test';
 test('Actual GPS ingestion reaches the authenticated dashboard',async({page,request})=>{
+ const workerErrors:string[]=[];page.on('console',message=>{if(message.type()==='error'&&message.text().includes('Worker failed'))workerErrors.push(message.text());});
  const url=process.env.E2E_API_URL||'http://localhost:8000';
  const email=`browser-${Date.now()}@example.test`,password='browser-test-passphrase-123';
  const registered=await request.post(url+'/api/v1/auth/register',{data:{email,password,name:'QA dispatcher',organization:'Browser QA fleet'}});expect(registered.status()).toBe(201);
@@ -17,6 +18,7 @@ test('Actual GPS ingestion reaches the authenticated dashboard',async({page,requ
  expect(second.status()).toBe(202);
  await expect(page.getByText('34.46100',{exact:false})).toBeVisible({timeout:5000});
  await expect(page.getByTestId('live-map')).toHaveAttribute('data-ready','true',{timeout:30000});
+ expect(workerErrors).toEqual([]);
  await page.screenshot({path:'../../docs/screenshots/live-operations.png',fullPage:true});
  await page.getByRole('button',{name:'Replay this device'}).click();await expect(page.getByRole('button',{name:'Load history'})).toBeVisible();
 });

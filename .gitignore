@@ -13,3 +13,5 @@ playwright-report/
 test-results/
 routing-data/
 .mypy_cache/
+
+/apps/web/public/maplibre/
