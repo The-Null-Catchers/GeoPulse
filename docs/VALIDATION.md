@@ -19,16 +19,15 @@ The FastAPI TestClient emitted a deprecation notice for its current httpx adapte
 
 ## Remote CI evidence
 
-[Run 37239362834](https://github.com/The-Null-Catchers/GeoPulse/actions/runs/37239362834), commit `f198289`: all seven jobs passed (backend, web, Flutter, Docker, Playwright, dependency audit and secret scan). Compose included the webhook dispatcher. Flutter analyze and both tests passed. Playwright authenticated a real workspace, ingested GPS, observed the live connection and persisted position, and checked phone sign-in layout.
+[Run 37240412037](https://github.com/The-Null-Catchers/GeoPulse/actions/runs/37240412037), code commit `f1fa82d`: all seven jobs passed (backend, web, Flutter, Docker, Playwright, dependency audit and secret scan). Compose includes the webhook dispatcher. Flutter analyze and both queue/widget tests passed. Backend ran 50 tests against PostGIS/Redis; web ran four replay tests and a production build.
 
-Visual inspection of the resulting screenshot exposed a CARTO key watermark despite passing functional tests. The next commit replaces that unconfigured dependency with a configurable XYZ basemap and adds a second GPS update with device-list resync blocked. This follow-up requires its own green run and new visual review.
+Playwright authenticated a workspace, ingested two actual GPS events, blocked device-list resync before the second update, and observed the new position over WebSocket. It checks that native MapLibre layers contain rendered fleet features and that no worker-load errors occurred. The screenshot in `docs/screenshots/live-operations.png` comes from that exact run; visual inspection confirmed a readable basemap and GPS marker. The responsive phone sign-in test also passed. This is functional/visual evidence from a Docker integration environment, not physical-device validation or a production deployment.
 
 ## Not verified
 
 - Mobile hardware/background operation and Android/iOS release builds remain unverified.
-- Configurable basemap visual review and strengthened realtime E2E await the follow-up run.
 - OSRM image and actual road dataset: adapter implemented, live provider validation pending.
-- Independent security/dependency/secret scans and production HTTPS deployment.
+- Independent manual security review/penetration testing and production HTTPS deployment. Automated dependency audits and secret scanning passed.
 
 ## Implementation roadmap status
 
@@ -44,9 +43,9 @@ Visual inspection of the resulting screenshot exposed a CARTO key watermark desp
 | 8: Flutter/background/offline | Foreground source and queue foundation; background/hardware work pending |
 | 9: webhooks/reports/keys/audit | Keys/audit/saved-view APIs/trip CSV implemented; signed durable webhooks implemented; more exports pending |
 | 10: performance/partitioning/security | 100-device test and regression controls; partitioning/soak/external security pending |
-| 11: E2E/CI/Docker/monitoring | All seven remote jobs passed; visual/realtime follow-up underway |
-| 12: portfolio/release | Architecture/docs/evidence present; verified screenshots/demo/release pending |
+| 11: E2E/CI/Docker/monitoring | All seven remote jobs passed; native rendering and realtime E2E verified |
+| 12: portfolio/release | Architecture/docs and verified screenshot present; hosted demo and full production release pending |
 
 ## Continue from here
 
-Keep the repository and migrations intact. Run remote CI first, repair Flutter/browser/Docker findings, capture real dashboard screenshots, and validate self-hosted OSRM. Then implement offline historical reconciliation , expand management workflows, complete mobile background tracking with visible OS-compliant state, and run 1,000-device/historical-data soak tests. Do not mark phases complete merely because schemas/pages exist.
+Validate self-hosted OSRM against a real regional dataset, implement offline historical reconciliation, expand management workflows, complete mobile background tracking with visible OS-compliant state, and run 1,000-device/historical-data soak tests. Preserve migrations and history. Do not mark phases complete merely because schemas/pages exist.

@@ -7,6 +7,12 @@ GeoPulse persists device locations in PostgreSQL/PostGIS, processes operational 
 > **v0.1.0 — verified engineering foundation, not a completed production release.**
 > The core ingestion → PostGIS → worker → Redis → WebSocket pipeline is operational and tested. The larger product brief remains the roadmap. Flutter background tracking, full workflow coverage and release validation remain pending. Signed webhooks now have durable delivery, retries and SSRF protection.
 
+## Operational dashboard
+
+![GeoPulse live dashboard captured from the Docker integration test](docs/screenshots/live-operations.png)
+
+Captured against the running Compose stack with two persisted GPS events from an authenticated tracker. The second location reached the dashboard over WebSocket; the test also checks native map rendering. The demo workspace in this screenshot contains one test device. Run the simulator for a moving fleet.
+
 ## Quick start
 
 Requires Docker Engine and Docker Compose v2. No public database or Redis ports are opened.
@@ -54,6 +60,9 @@ flowchart TD
   A --> P["PostGIS: location + transactional outbox"]
   P --> W["Worker: states, trips, fences, deviation"]
   W --> P
+  W --> J["PostGIS webhook jobs"]
+  J --> H["Leased HTTPS dispatcher"]
+  H --> X["Approved receivers"]
   W --> R["Redis workspace pub/sub"]
   R --> G["Authorized WebSocket gateway"]
   G --> U["Next.js / MapLibre dashboard"]
@@ -114,7 +123,7 @@ The current local evidence is **50 passing backend tests**, including real PostG
 
 A measured run used 100 devices, updates every 2 seconds, and 3 WebSocket clients. All 1,000 accepted points reached every client, with no HTTP errors. Measured latency and resource scope are recorded in [docs/load-test-result.json](docs/load-test-result.json), not estimated. This short local test is not a production sizing guarantee.
 
-All seven GitHub Actions jobs passed on [run 37239362834](https://github.com/The-Null-Catchers/GeoPulse/actions/runs/37239362834): backend, web, Flutter, Docker, browser integration, dependency audit and secret scan. Visual review then exposed an unconfigured CARTO key watermark; the configurable basemap repair and stronger realtime assertion are undergoing follow-up validation. See [validation evidence](docs/VALIDATION.md).
+All seven GitHub Actions jobs passed on [run 37240412037](https://github.com/The-Null-Catchers/GeoPulse/actions/runs/37240412037): backend, web, Flutter, Docker, browser integration, dependency audit and secret scan. Playwright verifies authenticated GPS ingestion, a second position delivered while device-list polling is blocked, and GPS features rendered in native MapLibre layers. Both Flutter tests and analyzer passed. See [validation evidence](docs/VALIDATION.md).
 
 ```sh
 RUN_INTEGRATION=1 pytest -q
@@ -128,6 +137,7 @@ cd apps/web && npm run typecheck && npm test && npm run build
 - [Architecture and decisions](docs/ARCHITECTURE.md)
 - [Geospatial engine and correctness limits](docs/GEO_ENGINE.md)
 - [Realtime delivery semantics](docs/REALTIME.md)
+- [Signed webhooks, receiver verification and retries](docs/WEBHOOKS.md)
 - [Security and privacy](docs/SECURITY.md)
 - [Deployment and OSRM data preparation](docs/DEPLOYMENT.md)
 - [Load testing and scaling](docs/LOAD_TESTING.md)
