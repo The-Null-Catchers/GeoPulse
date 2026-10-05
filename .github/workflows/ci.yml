@@ -1,0 +1,121 @@
+name: GeoPulse CI
+on:
+  push:
+  pull_request:
+concurrency:
+  group: geopulse-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: geopulse
+          POSTGRES_USER: geopulse
+          POSTGRES_PASSWORD: ci-test-only
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U geopulse" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://geopulse:ci-test-only@localhost:5432/geopulse
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ci-only-signing-secret-not-for-production-12345
+      COOKIE_SECURE: "false"
+      RUN_INTEGRATION: "1"
+      PYTHONPATH: apps/api:apps:packages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r apps/api/requirements-dev.txt
+      - run: python -m geopulse.migrate
+      - run: ruff check apps packages scripts
+      - run: mypy apps/api/geopulse packages/geospatial apps/worker apps/simulator --explicit-package-bases
+      - run: pytest -q
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - working-directory: apps/mobile
+        run: flutter create --platforms=android,ios --org org.geopulse .
+      - run: python3 scripts/mobile-bootstrap.py
+      - working-directory: apps/mobile
+        run: flutter pub get && flutter analyze && flutter test
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f infra/docker.Dockerfile -t geopulse-api:test .
+      - run: docker build -f apps/web/Dockerfile -t geopulse-web:test .
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: python3 scripts/init-env.py
+      - run: docker compose up -d --build --wait
+      - working-directory: apps/web
+        run: npm ci && npx playwright install --with-deps chromium
+      - working-directory: apps/web
+        env:
+          E2E_WEB_URL: http://localhost
+          E2E_API_URL: http://localhost:8000
+        run: npm run test:e2e
+      - if: always()
+        run: docker compose logs --no-color > compose-test.log
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-evidence
+          path: |
+            docs/screenshots/
+            apps/web/test-results/
+            compose-test.log
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install pip-audit
+      - run: pip-audit -r apps/api/requirements.txt
+      - working-directory: apps/web
+        run: npm ci && npm audit --omit=dev --audit-level=high
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.24.2 detect --source=/repo --no-git --redact --config=/repo/.gitleaks.toml

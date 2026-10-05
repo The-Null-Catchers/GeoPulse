@@ -1,0 +1,32 @@
+{
+  "devices": 100,
+  "websocket_clients": 3,
+  "ticks": 10,
+  "interval_s": 2,
+  "accepted_points": 1000,
+  "http_errors": 0,
+  "received_per_client": [
+    1000,
+    1000,
+    1000
+  ],
+  "elapsed_s": 20.01,
+  "http_p50_ms": 279.65,
+  "http_p95_ms": 782.3,
+  "websocket_end_to_end_p50_ms": 773.64,
+  "websocket_end_to_end_p95_ms": 1869.66,
+  "websocket_latency_samples": 3000,
+  "cpu_usage": {
+    "total_child_cpu_seconds": 15.93,
+    "wall_seconds": 31.67,
+    "one_core_percent": 50.31,
+    "scope": "Aggregate child CPU including PostgreSQL, Redis, API, worker, migrations and client provisioning/load; not instantaneous server utilization."
+  },
+  "memory_usage": {
+    "peak_child_rss_mib": 126.1,
+    "scope": "Largest child-process peak RSS from getrusage; not simultaneous total service memory."
+  },
+  "database_query_time_ms": 8.56,
+  "environment": "Disposable local PostgreSQL/PostGIS and Redis; single API and worker; not production sizing.",
+  "database_query_measurement": "One warm radius query over this accumulated disposable dataset, client elapsed including result fetch; not p95."
+}

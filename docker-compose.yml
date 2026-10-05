@@ -1,0 +1,137 @@
+x-app: &app
+  build:
+    context: .
+    dockerfile: infra/docker.Dockerfile
+  environment: &environment
+    DATABASE_URL: postgresql://geopulse:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/geopulse
+    REDIS_URL: redis://redis:6379/0
+    JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+    CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+    COOKIE_SECURE: ${COOKIE_SECURE:-true}
+    ROUTING_URL: ${ROUTING_URL:-}
+    WEBHOOK_ENCRYPTION_KEY: ${WEBHOOK_ENCRYPTION_KEY:-}
+    WEBHOOK_ALLOWED_HOSTS: ${WEBHOOK_ALLOWED_HOSTS:-}
+  restart: unless-stopped
+  init: true
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: geopulse
+      POSTGRES_USER: geopulse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geopulse -d geopulse"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    volumes: ["redis_data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+  migrate:
+    <<: *app
+    command: ["python", "-m", "geopulse.migrate"]
+    restart: "no"
+  api:
+    <<: *app
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  worker:
+    <<: *app
+    command: ["python", "-m", "worker.main"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,redis; assert redis.Redis.from_url(os.environ['REDIS_URL']).get('worker:heartbeat')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  webhook-worker:
+    <<: *app
+    command: ["python", "-m", "worker.webhooks"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,redis; assert redis.Redis.from_url(os.environ['REDIS_URL']).get('webhook-worker:heartbeat')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_TILE_URL: ${NEXT_PUBLIC_TILE_URL:-}
+        NEXT_PUBLIC_TILE_ATTRIBUTION: ${NEXT_PUBLIC_TILE_ATTRIBUTION:-© OpenStreetMap contributors}
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports: ["80:80", "443:443"]
+    volumes: ["./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro", "caddy_data:/data", "caddy_config:/config"]
+    depends_on: [web, api]
+    restart: unless-stopped
+  simulator:
+    <<: *app
+    profiles: [demo]
+    environment:
+      <<: *environment
+      API_URL: http://api:8000
+      SIMULATOR_EMAIL: ${SIMULATOR_EMAIL:-}
+      SIMULATOR_PASSWORD: ${SIMULATOR_PASSWORD:-}
+    command: ["python", "-m", "simulator.main", "--seed", "--devices", "10", "--interval", "2s"]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: "no"
+  routing:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    profiles: [routing]
+    volumes: ["./routing-data:/data:ro"]
+    command: ["osrm-routed", "--algorithm", "mld", "/data/region.osrm"]
+    restart: unless-stopped
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    profiles: [monitoring]
+    volumes: ["./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro", "prometheus_data:/prometheus"]
+    ports: ["127.0.0.1:9090:9090"]
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+  prometheus_data:
