@@ -52,6 +52,7 @@ test('Fleet filters combine team, type, activation and search in the registry',a
  await page.getByLabel('Search devices',{exact:true}).fill(' STORED ');
  await expect(page.locator('tbody tr')).toHaveCount(1);await expect(page.locator('tbody')).toContainText('Stored asset');
  await page.getByRole('button',{name:'Clear filters'}).click();await expect(page.locator('tbody tr')).toHaveCount(3);
+ await page.getByLabel('Team',{exact:true}).selectOption('unassigned');
  await page.getByRole('button',{name:'Sign out'}).click();
  await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Open dashboard'}).click();
  await expect(page.getByRole('status')).toHaveText('3 of 3 loaded devices');await expect(page.getByLabel('Team',{exact:true})).toHaveValue('all');
