@@ -35,7 +35,7 @@ Playwright authenticated a workspace, ingested two actual GPS events, blocked de
 |---|---|
 | 1: architecture/infra/auth/workspaces/RBAC | Implemented source; Docker/Compose and CI verified; production deployment pending |
 | 2: devices/GPS/persistence/simulator/map | Core implemented and backend integration-tested |
-| 3: realtime/presence/states/details | Core tested; expanded filters/scale/backpressure pending |
+| 3: realtime/presence/states/details | Core tested; Combined fleet filters implemented; scale/backpressure pending |
 | 4: history/trips/stops/replay | Core implemented; late-derived reconciliation and event overlays pending |
 | 5: geofences/events/alerts | Core implemented and tested; richer alert-rule workflows pending |
 | 6: routes/assignment/deviation/ETA | Core implemented; OSRM live validation and missed-stop/late-arrival workflows pending |
@@ -49,3 +49,9 @@ Playwright authenticated a workspace, ingested two actual GPS events, blocked de
 ## Continue from here
 
 Validate self-hosted OSRM against a real regional dataset, implement offline historical reconciliation, expand management workflows, complete mobile background tracking with visible OS-compliant state, and run 1,000-device/historical-data soak tests. Preserve migrations and history. Do not mark phases complete merely because schemas/pages exist.
+
+## Fleet filter increment
+
+The dashboard combines name, all derived statuses, team (including unassigned), device type and activation. The same filtered snapshot feeds native map layers, fit bounds, fleet list and device registry. Filters reset on sign-out/sign-in; workspace metrics retain their existing workspace scope. Counts explicitly describe loaded devices: this UI currently loads the first 1,000 device records and 1,000 teams rather than claiming a complete larger fleet search.
+
+Local validation: TypeScript checking, seven web unit tests and production build. Added Playwright coverage checks native marker removal/restoration and intersecting team/type/activation/search filters, including inactive devices without GPS and session reset. Browser execution is recorded by CI; local Docker integration is unavailable in this workspace.

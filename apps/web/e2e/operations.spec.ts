@@ -21,6 +21,39 @@ test('Actual GPS ingestion reaches the authenticated dashboard',async({page,requ
  await expect(page.getByTestId('live-map')).toHaveAttribute('data-fleet-features',/^[1-9]\d*$/);
  expect(workerErrors).toEqual([]);
  await page.screenshot({path:'../../docs/screenshots/live-operations.png',fullPage:true});
+ await page.getByLabel('Device type',{exact:true}).selectOption('asset');
+ await expect(page.getByRole('status')).toHaveText('0 of 1 loaded devices');
+ await expect(page.getByTestId('live-map')).toHaveAttribute('data-fleet-features','0');
+ await page.getByRole('button',{name:'Clear filters'}).click();
+ await expect(page.getByTestId('live-map')).toHaveAttribute('data-fleet-features',/^[1-9]\d*$/);
  await page.getByRole('button',{name:'Replay this device'}).click();await expect(page.getByRole('button',{name:'Load history'})).toBeVisible();
 });
 test('Responsive sign-in form is usable on a phone',async({page})=>{await page.setViewportSize({width:390,height:844});await page.goto('/');await expect(page.getByRole('button',{name:'Open dashboard'})).toBeVisible();await expect(page.getByLabel('Email',{exact:true})).toBeVisible();});
+
+test('Fleet filters combine team, type, activation and search in the registry',async({page,request})=>{
+ const url=process.env.E2E_API_URL||'http://localhost:8000';
+ const email=`filters-${crypto.randomUUID()}@example.test`,password='filter-test-passphrase-123';
+ const registered=await request.post(url+'/api/v1/auth/register',{data:{email,password,name:'Filter QA',organization:'Filter QA fleet'}});
+ expect(registered.status()).toBe(201);const auth=await registered.json();
+ const headers={Authorization:'Bearer '+auth.access_token,'X-Workspace-ID':auth.workspace_id};
+ const teamResponse=await request.post(url+'/api/v1/teams',{headers,data:{name:'North team'}});expect(teamResponse.status()).toBe(201);const team=await teamResponse.json();
+ for(const data of [{name:'North van',device_type:'vehicle',team_id:team.id},{name:'Field person',device_type:'person'},{name:'Stored asset',device_type:'asset'}]){
+  const response=await request.post(url+'/api/v1/devices',{headers,data});expect(response.status()).toBe(201);
+  if(data.device_type==='asset'){const d=await response.json();expect((await request.patch(url+'/api/v1/devices/'+d.id,{headers,data:{active:false}})).ok()).toBeTruthy();}
+ }
+ await page.goto('/');await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Open dashboard'}).click();
+ await page.getByRole('button',{name:'Devices',exact:true}).click();
+ await expect(page.getByRole('status')).toHaveText('3 of 3 loaded devices');
+ await page.getByLabel('Team',{exact:true}).selectOption(team.id);
+ await expect(page.locator('tbody tr')).toHaveCount(1);await expect(page.locator('tbody')).toContainText('North van');
+ await page.getByLabel('Device type',{exact:true}).selectOption('person');await expect(page.locator('tbody tr')).toHaveCount(0);
+ await page.getByRole('button',{name:'Clear filters'}).click();
+ await page.getByLabel('Team',{exact:true}).selectOption('unassigned');await page.getByLabel('Activation',{exact:true}).selectOption('inactive');
+ await page.getByLabel('Search devices',{exact:true}).fill(' STORED ');
+ await expect(page.locator('tbody tr')).toHaveCount(1);await expect(page.locator('tbody')).toContainText('Stored asset');
+ await page.getByRole('button',{name:'Clear filters'}).click();await expect(page.locator('tbody tr')).toHaveCount(3);
+ await page.getByLabel('Team',{exact:true}).selectOption('unassigned');
+ await page.getByRole('button',{name:'Sign out'}).click();
+ await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Open dashboard'}).click();
+ await expect(page.getByRole('status')).toHaveText('3 of 3 loaded devices');await expect(page.getByLabel('Team',{exact:true})).toHaveValue('all');
+});

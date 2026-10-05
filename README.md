@@ -47,7 +47,7 @@ The simulator service does not automatically start with the main stack. `--seed`
 | Routes | OSRM adapter, assignment, actual distance-based deviation, baseline ETA | Requires prepared self-hosted routing dataset; no road-data bundle included |
 | Optimization | Deterministic nearest-neighbour + 2-opt | Haversine distance, not road-time/VRP optimization |
 | Spatial queries | PostGIS radius search, historical grid heatmap | Full polygon/closest/route search UI pending |
-| Dashboard | Live clustered map, state filter/search, follow/fit, device panel, polygon drawing, replay, alerts, trips CSV | Team/type filters, route editor and many management screens pending |
+| Dashboard | Live clustered map, combined state/team/type/activation filters and search, follow/fit, device panel, polygon drawing, replay, alerts, trips CSV | Filters apply to the first 1,000 loaded devices; route editor and many management screens pending |
 | Developer API | OpenAPI, scoped hashed API keys, audit, saved views, signed durable webhooks and delivery history | Broader SDKs pending |
 | Privacy | Explicit foreground consent, disable device, delete device history, retention for GPS and derived history | Full-device exports and completed privacy UX pending |
 | Mobile | Operator map/polling, secure token store, foreground tracking, SQLite offline batch queue | Analyzer/queue/widget tests passed; physical hardware and background tracking pending |
@@ -119,7 +119,7 @@ Use a current original UTC timestamp in real requests. Old timestamps outside wo
 
 ## Tests and evidence
 
-The current local evidence is **50 passing backend tests**, including real PostGIS/Redis integration tests, **4 passing replay tests**, passing Ruff/mypy, TypeScript checking and Next.js production build. See [docs/VALIDATION.md](docs/VALIDATION.md) for the exact evidence and what was not executed.
+The current local evidence is **50 passing backend tests**, including real PostGIS/Redis integration tests, **7 passing web tests**, passing Ruff/mypy, TypeScript checking and Next.js production build. See [docs/VALIDATION.md](docs/VALIDATION.md) for the exact evidence and what was not executed.
 
 A measured run used 100 devices, updates every 2 seconds, and 3 WebSocket clients. All 1,000 accepted points reached every client, with no HTTP errors. Measured latency and resource scope are recorded in [docs/load-test-result.json](docs/load-test-result.json), not estimated. This short local test is not a production sizing guarantee.
 
