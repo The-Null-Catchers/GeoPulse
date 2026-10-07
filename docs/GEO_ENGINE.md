@@ -38,3 +38,7 @@ The optimizer uses deterministic nearest-neighbour followed by open-path 2-opt w
 Replay interpolates location/speed against timestamp intervals, supports seek/play/pause and .5/1/2/5/10x speed, and holds position across gaps longer than 120s. Web replay loads at most the first 5,000 points of a UTC day; API pagination supports additional reads but automatic paging is pending. Stop/event/alert timeline overlays remain pending. History is stored in PostGIS, not generated in the browser.
 
 Heatmaps aggregate `ST_SnapToGrid` bins server-side for bounded ranges and return at most 10,000 bins. This reduces client data volume; separate alert/idle/pickup sources and tile-based aggregation are future work.
+
+## Spatial search
+
+The Spatial Search page queries persisted PostGIS snapshots across the workspace rather than filtering the first 1,000 live-map records. Closest-device search uses `ST_DWithin` to bound candidates and orders their spheroidal `ST_Distance` in meters. Polygon search uses boundary-inclusive `ST_Covers` with hole and MultiPolygon support. Its geometry cast has a dedicated GiST expression index in migration 004. Route corridor and dated stop-radius search use geography `ST_DWithin`; stop geography and workspace/arrival indexes are included. Containing-fence search excludes disabled fences. Device queries exclude inactive devices but do not exclude stale snapshots; results show the recorded timestamp. See [spatial query contracts](SPATIAL_SEARCH.md).
