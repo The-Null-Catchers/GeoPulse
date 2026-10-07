@@ -2,7 +2,7 @@
 
 ## Passed locally
 
-- 50 backend tests, including real PostgreSQL/PostGIS and Redis integration (no SQLite stand-in).
+- 63 backend tests, including real PostgreSQL/PostGIS and Redis integration (no SQLite stand-in).
 - GPS validation, finite/bounded coordinates, timezone/future time validation, simulator movement and distance units.
 - Unique device event deduplication, persisted old points and monotonic current snapshots.
 - Workspace REST isolation, nearby-radius isolation, foreign-tenant relationship rejection and viewer write denial.
@@ -60,4 +60,10 @@ Local validation: TypeScript checking, seven web unit tests and production build
 
 Added closest-device, Polygon/MultiPolygon device coverage, route-corridor device queries, enabled geofences containing a point, and dated nearby-stop searches. The map page renders search results using native sources/layers and exposes bounded result paging independently of the loaded fleet. Migration 004 adds indexes for geometry-cast snapshot queries and stop searches. Read-only API keys and viewer users can use the POST polygon query without gaining mutation permission.
 
-Local validation: Ruff, mypy, TypeScript, seven web unit tests, and 49 Python tests passed. Four new real-PostGIS integration cases cover boundaries/holes, paging, metric distance/radius, inactive devices, tenant isolation, foreign routes, read-only API keys, invalid polygon topology, disabled fences and stop time windows. Local execution skips 14 integration tests because this workspace has no running PostGIS/Redis. A new Playwright scenario checks actual ingested GPS and containing fences rendered in native layers, area queries and invalidation after changing the search point. Remote CI must pass these integration/browser tests before merge.
+Local validation: Ruff, mypy, TypeScript, seven web unit tests, and 49 Python tests passed. Four new real-PostGIS integration cases cover boundaries/holes, paging, metric distance/radius, inactive devices, tenant isolation, foreign routes, read-only API keys, invalid polygon topology, disabled fences and stop time windows. Local execution skips 14 integration tests because this workspace has no running PostGIS/Redis. A new Playwright scenario checks actual ingested GPS and containing fences rendered in native layers, area queries and invalidation after changing the search point. All seven jobs passed on run 37636077750 for commit 6c8848e, including 63 real-PostGIS backend tests and four browser scenarios. The spatial search increment is remotely verified.
+
+## Historical replay increment
+
+Added separate keyset-paged point/event APIs with tenant checks and a seven-day range cap. The web player automatically loads bounded history, accepts UTC start/end times, exposes stop arrival/departure, fence enter/exit/dwell and alert-created events, and seeks directly from the timeline. Native event markers follow playback time. Alert positions explicitly retain their last-known GPS timestamp or remain unpositioned when no previous point exists. The route trail splits at GPS gaps rather than connecting missing travel. Binary search handles timestamp ties and interpolation; request generations invalidate history after input/session changes or a history-deletion broadcast.
+
+New unit coverage exercises cursor paging, explicit truncation, cancellation, timestamp ties, bearing wrap and disconnected trails. New PostGIS coverage verifies equal-time cursors, more than 5,000 persisted points, workspace isolation, event cursor ties, stop durations, no invented alert locations and deletion. A new browser scenario ingests actual GPS to produce stop/fence events, seeks the player and verifies native event layers and range invalidation. Local checks passed: 49 Python tests (16 integration scenarios skipped), Ruff, mypy, TypeScript, 13 web tests and a production build. Local PostGIS/browser execution remains unavailable; see the replay PR's CI for remote results.
