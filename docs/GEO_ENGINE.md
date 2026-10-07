@@ -35,7 +35,7 @@ The optimizer uses deterministic nearest-neighbour followed by open-path 2-opt w
 
 ## Replay and analytics
 
-Replay interpolates location/speed against timestamp intervals, supports seek/play/pause and .5/1/2/5/10x speed, and holds position across gaps longer than 120s. Web replay loads at most the first 5,000 points of a UTC day; API pagination supports additional reads but automatic paging is pending. Stop/event/alert timeline overlays remain pending. History is stored in PostGIS, not generated in the browser.
+Replay interpolates location/speed against timestamp intervals, supports seek/play/pause and .5/1/2/5/10x speed, and holds position across gaps longer than 120s. Web replay pages through up to 20,000 points and 5,000 persisted operational events for a chosen UTC day/time range, with explicit partial-history notices. The timeline supports stop arrival/departure, geofence enter/exit/dwell and alert-created events; clicking an event seeks playback. Native event markers appear only after their event time. Traces split at GPS gaps longer than 120 seconds. Keyset APIs support further reads; see [replay contracts](REPLAY.md). History is stored in PostGIS, not generated in the browser.
 
 Heatmaps aggregate `ST_SnapToGrid` bins server-side for bounded ranges and return at most 10,000 bins. This reduces client data volume; separate alert/idle/pickup sources and tile-based aggregation are future work.
 

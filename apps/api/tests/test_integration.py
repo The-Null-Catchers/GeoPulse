@@ -507,3 +507,125 @@ def test_spatial_route_and_stop_search_isolation_and_time_window(client):
     for start, end in [("2026-01-01", "2026-01-02"), (params["end"], params["start"]),
                        ((stamp - timedelta(days=32)).isoformat(), params["end"])]:
         assert client.get(url, headers=h, params={**params, "start": start, "end": end}).status_code == 422
+
+
+def test_replay_point_cursor_ties_large_history_and_workspace_isolation(client):
+    a, h = account(client)
+    _, foreign_headers = account(client)
+    dev = create_device(client, h)
+    stamp = datetime.now(timezone.utc) - timedelta(hours=2)
+    points = [gps(stamp, event_id=str(uuid4()), lng=34.46 + n * .00001) for n in range(5)]
+    assert client.post("/api/v1/locations/batch", headers={"Authorization": "Bearer " + dev["token"]},
+                       json={"points": points}).status_code == 202
+    url = "/api/v1/devices/" + dev["id"] + "/replay/points"
+    params = {"start": (stamp - timedelta(minutes=1)).isoformat(), "end": (stamp + timedelta(hours=1)).isoformat(),
+              "limit": 2}
+    first = client.get(url, headers=h, params=params)
+    assert first.status_code == 200, first.text
+    rows, cursor = first.json()["items"], first.json()["next_cursor"]
+    while cursor:
+        result = client.get(url, headers=h, params={**params, "after_time": cursor["recorded_at"], "after_id": cursor["id"]})
+        assert result.status_code == 200, result.text
+        rows.extend(result.json()["items"])
+        cursor = result.json()["next_cursor"]
+    assert [r["event_id"] for r in rows] == sorted(p["event_id"] for p in points)
+    assert client.get(url, headers=foreign_headers, params=params).status_code == 404
+    assert client.get(url, headers=h, params={**params, "after_id": str(uuid4())}).status_code == 422
+    assert client.get(url, headers=h, params={**params, "after_time": "2026-01-01", "after_id": str(uuid4())}).status_code == 422
+    assert client.get(url, headers=h, params={**params, "start": params["end"]}).status_code == 422
+    # Large persisted fixture validates pagination beyond the former first-5,000-point limit.
+    from geopulse.db import pool
+
+    async def history_fixture():
+        async with pool.connection() as conn:
+            await conn.execute("""INSERT INTO location_events(id,workspace_id,device_id,event_id,recorded_at,
+                coordinates,speed,bearing,accuracy,source)
+                SELECT gen_random_uuid(),%s,%s,gen_random_uuid(),%s::timestamptz+n*interval '0.1 second',
+                ST_GeogFromText('SRID=4326;POINT(34.46 31.51)'),5,30,5,'gps' FROM generate_series(1,5101) n""",
+                (a["workspace_id"], dev["id"], stamp))
+    client.portal.call(history_fixture)
+    large = client.get(url, headers=h, params={**params, "limit": 5000}).json()
+    assert len(large["items"]) == 5000 and large["next_cursor"]
+    tail = client.get(url, headers=h, params={**params, "limit": 5000,
+                      "after_time": large["next_cursor"]["recorded_at"], "after_id": large["next_cursor"]["id"]}).json()
+    assert len(tail["items"]) == 106 and tail["next_cursor"] is None
+    assert len({p["event_id"] for p in large["items"] + tail["items"]}) == 5106
+
+
+def test_replay_events_are_persisted_paged_and_history_erasure_applies(client):
+    a, h = account(client)
+    _, foreign_headers = account(client)
+    dev = create_device(client, h)
+    fence = client.post("/api/v1/geofences", headers=h,
+                        json={"name": "Timeline depot", "center": [34.46, 31.51], "radius_m": 100}).json()
+    stamp = datetime.now(timezone.utc) - timedelta(minutes=10)
+    assert client.post("/api/v1/locations", headers={"Authorization": "Bearer " + dev["token"]},
+                       json=gps(stamp)).status_code == 202
+    # Persisted operational fixtures have coincident timestamps to exercise event cursor ties.
+    from geopulse.db import pool
+
+    async def events_fixture():
+        async with pool.connection() as conn:
+            await conn.execute("""INSERT INTO stops(id,workspace_id,device_id,arrived_at,departed_at,coordinates)
+                VALUES (%s,%s,%s,%s,%s,ST_GeogFromText('SRID=4326;POINT(34.46 31.51)'))""",
+                (uuid4(), a["workspace_id"], dev["id"], stamp, stamp + timedelta(seconds=120)))
+            await conn.execute("""INSERT INTO geofence_events(id,workspace_id,device_id,geofence_id,event_type,
+                recorded_at,coordinates) VALUES (%s,%s,%s,%s,'enter',%s,ST_GeogFromText('SRID=4326;POINT(34.46 31.51)'))""",
+                (uuid4(), a["workspace_id"], dev["id"], fence["id"], stamp))
+            for when, kind in [(stamp - timedelta(seconds=60), 'device.offline'), (stamp, 'battery.low')]:
+                await conn.execute("""INSERT INTO alerts(id,workspace_id,device_id,kind,severity,recorded_at)
+                    VALUES (%s,%s,%s,%s,'warning',%s)""", (uuid4(), a["workspace_id"], dev["id"], kind, when))
+    client.portal.call(events_fixture)
+    url = "/api/v1/devices/" + dev["id"] + "/replay/events"
+    params = {"start": (stamp - timedelta(minutes=2)).isoformat(), "end": (stamp + timedelta(minutes=3)).isoformat(),
+              "limit": 1}
+    rows, cursor = [], None
+    for _ in range(10):
+        cursor_params = {"after_time": cursor["recorded_at"], "after_id": cursor["id"]} if cursor else {}
+        response = client.get(url, headers=h, params={**params, **cursor_params})
+        assert response.status_code == 200, response.text
+        rows.extend(response.json()["items"])
+        cursor = response.json()["next_cursor"]
+        if not cursor:
+            break
+    assert len(rows) == 5 and len({e["id"] for e in rows}) == 5
+    assert rows == sorted(rows, key=lambda r: (r["recorded_at"], r["id"]))
+    assert {e["kind"] for e in rows} == {"stop.arrival", "stop.departure", "geofence.enter", "alert.created"}
+    assert next(e for e in rows if e["kind"] == "stop.departure")["duration_seconds"] == 120
+    assert next(e for e in rows if e["kind"] == "geofence.enter")["label"] == "Timeline depot"
+    assert rows[0]["kind"] == "alert.created" and rows[0]["lng"] is None  # No invented GPS before the first point.
+    assert next(e for e in rows if e["label"] == "battery.low")["lng"] == pytest.approx(34.46)
+    assert client.get(url, headers=foreign_headers, params=params).status_code == 404
+    assert client.get(url, headers=h, params={**params, "after_id": rows[0]["id"]}).status_code == 422
+    assert client.delete("/api/v1/devices/" + dev["id"] + "/history", headers=h).status_code == 204
+    assert client.get(url, headers=h, params=params).json()["items"] == []
+
+
+def test_retention_expires_unlinked_geofence_events_per_workspace(client):
+    a, h = account(client)
+    b, hb = account(client)
+    own, foreign = create_device(client, h), create_device(client, hb)
+    fence_a = client.post("/api/v1/geofences", headers=h,
+                          json={"name": "Retention fence", "center": [34.46, 31.51], "radius_m": 100}).json()
+    fence_b = client.post("/api/v1/geofences", headers=hb,
+                          json={"name": "Other fence", "center": [34.46, 31.51], "radius_m": 100}).json()
+    assert client.patch("/api/v1/settings", headers=h,
+                        json={"retention_days": 1, "offline_seconds": 120, "moving_speed": 1.5,
+                              "stop_seconds": 30}).status_code == 200
+    from geopulse.db import pool
+    from worker.main import maintenance
+
+    async def fixtures_and_retention():
+        async with pool.connection() as conn:
+            for wid, did, fid, age in [(a["workspace_id"], own["id"], fence_a["id"], 48),
+                                      (a["workspace_id"], own["id"], fence_a["id"], 1),
+                                      (b["workspace_id"], foreign["id"], fence_b["id"], 48)]:
+                await conn.execute("""INSERT INTO geofence_events(id,workspace_id,device_id,geofence_id,
+                    event_type,recorded_at,coordinates) VALUES (%s,%s,%s,%s,'enter',now()-make_interval(hours=>%s),
+                    ST_GeogFromText('SRID=4326;POINT(34.46 31.51)'))""", (uuid4(), wid, did, fid, age))
+        await maintenance()
+    client.portal.call(fixtures_and_retention)
+    events = client.get("/api/v1/geofence-events", headers=h).json()
+    assert len(events) == 1
+    assert datetime.fromisoformat(events[0]["recorded_at"]) > datetime.now(timezone.utc) - timedelta(days=1)
+    assert len(client.get("/api/v1/geofence-events", headers=hb).json()) == 1
