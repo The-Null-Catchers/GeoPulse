@@ -124,7 +124,7 @@ test('Replay uses real stop/fence events, seeks on its timeline and clears chang
 });
 test('Late offline GPS repairs daily analytics without moving the live marker backwards',async({page,request})=>{
  const url=process.env.E2E_API_URL||'http://localhost:8000';
- const email=`distance-${crypto.randomUUID()}@example.test`,password='distance-test-passphrase-123';
+ const email=`distance-${crypto.randomUUID()}@example.test`,password='qa-'+crypto.randomUUID()+'-passphrase';
  const registered=await request.post(url+'/api/v1/auth/register',{data:{email,password,name:'Distance QA',organization:'Offline QA fleet'}});
  expect(registered.status()).toBe(201);const auth=await registered.json();
  const headers={Authorization:'Bearer '+auth.access_token,'X-Workspace-ID':auth.workspace_id};

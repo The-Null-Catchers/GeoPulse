@@ -735,7 +735,7 @@ def test_daily_distance_api_is_scoped_bounded_and_available_to_read_keys(client)
     url = "/api/v1/analytics/distance"
     assert client.get(url, headers=foreign_headers, params=params).status_code == 404
     assert client.get(url, headers=h, params={**params, "device_id": foreign["id"]}).status_code == 404
-    assert client.get(url, params=params).status_code == 401
+    assert client.get(url, headers={"X-Workspace-ID": h["X-Workspace-ID"]}, params=params).status_code == 401
     assert client.get(url, headers=h, params={**params, "end": (day - timedelta(days=1)).isoformat()}).status_code == 422
     assert client.get(url, headers=h, params={**params, "end": (day + timedelta(days=90)).isoformat()}).status_code == 422
     key = client.post("/api/v1/api-keys", headers=h, json={"name": "Distance reader", "scopes": ["read"]}).json()
