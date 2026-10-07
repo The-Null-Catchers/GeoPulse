@@ -115,6 +115,7 @@ test('Replay uses real stop/fence events, seeks on its timeline and clears chang
  const departure=page.getByTestId('replay-event').filter({hasText:'stop departure'});await expect(departure).toBeVisible();await departure.click();
  await expect(page.getByLabel('Replay timeline')).toHaveValue(String(start+90000));
  await expect(page.getByTestId('live-map')).toHaveAttribute('data-replay-events',/^[1-9]\d*$/);
+ await page.evaluate(()=>window.scrollTo(0,0));
  await page.screenshot({path:'../../docs/screenshots/historical-replay.png',fullPage:true});
  await page.getByLabel('Replay event filter').selectOption('stop.');await expect(page.getByTestId('replay-event')).toHaveCount(2);
  await page.getByLabel('Replay start UTC').fill('23:59:58');
