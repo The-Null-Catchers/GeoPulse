@@ -58,7 +58,8 @@ async def reconcile_once():
         day = job["date"]
         start = datetime.combine(day, time.min, timezone.utc)
         end = start + timedelta(days=1)
-        if day >= (datetime.now(timezone.utc) - timedelta(days=dev["retention_days"])).date():
+        retention_cutoff = datetime.now(timezone.utc) - timedelta(days=dev["retention_days"])
+        if day >= retention_cutoff.date():
             await conn.execute("SET LOCAL statement_timeout='10s'")
             result = await one(
                 conn,
@@ -78,7 +79,7 @@ async def reconcile_once():
                      FROM distances WHERE recorded_at >= %s""",
                 (
                     job["workspace_id"], job["device_id"],
-                    start - timedelta(seconds=dev["offline_seconds"]), end,
+                    max(start - timedelta(seconds=dev["offline_seconds"]), retention_cutoff), end,
                     dev["offline_seconds"], start,
                 ),
             )

@@ -774,3 +774,23 @@ def test_distance_reconciliation_rollback_preserves_job_for_retry(client, monkey
     rows = client.get("/api/v1/analytics/distance", headers=h, params=params).json()
     assert 110 < sum(row["distance_m"] for row in rows) < 113
     assert sum(row["pending_devices"] for row in rows) == 0
+def test_distance_repair_excludes_expired_samples_before_retention_cleanup(client):
+    _, h = account(client)
+    dev = create_device(client, h)
+    dh = {"Authorization": "Bearer " + dev["token"]}
+    cutoff = datetime.now(timezone.utc) - timedelta(days=1)
+    for stamp in (cutoff - timedelta(seconds=30), cutoff + timedelta(seconds=60)):
+        assert client.post("/api/v1/locations", headers=dh, json=gps(stamp)).status_code == 202
+    drain(client)
+    assert client.patch("/api/v1/settings", headers=h,
+                        json={"retention_days": 1, "offline_seconds": 120,
+                              "moving_speed": 1.5, "stop_seconds": 180}).status_code == 200
+    assert client.post("/api/v1/locations", headers=dh,
+                       json=gps(cutoff + timedelta(seconds=30), lat=31.511)).json()["inserted"] == 1
+    drain(client)
+    repair_distances(client)
+    params = {"start": cutoff.date().isoformat(), "end": (cutoff + timedelta(days=1)).date().isoformat(),
+              "device_id": dev["id"]}
+    rows = client.get("/api/v1/analytics/distance", headers=h, params=params).json()
+    # The expired A->B segment is absent even while its raw GPS row awaits retention cleanup.
+    assert 110 < sum(row["distance_m"] for row in rows) < 113
