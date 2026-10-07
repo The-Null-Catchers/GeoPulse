@@ -599,3 +599,33 @@ def test_replay_events_are_persisted_paged_and_history_erasure_applies(client):
     assert client.get(url, headers=h, params={**params, "after_id": rows[0]["id"]}).status_code == 422
     assert client.delete("/api/v1/devices/" + dev["id"] + "/history", headers=h).status_code == 204
     assert client.get(url, headers=h, params=params).json()["items"] == []
+
+
+def test_retention_expires_unlinked_geofence_events_per_workspace(client):
+    a, h = account(client)
+    b, hb = account(client)
+    own, foreign = create_device(client, h), create_device(client, hb)
+    fence_a = client.post("/api/v1/geofences", headers=h,
+                          json={"name": "Retention fence", "center": [34.46, 31.51], "radius_m": 100}).json()
+    fence_b = client.post("/api/v1/geofences", headers=hb,
+                          json={"name": "Other fence", "center": [34.46, 31.51], "radius_m": 100}).json()
+    assert client.patch("/api/v1/settings", headers=h,
+                        json={"retention_days": 1, "offline_seconds": 120, "moving_speed": 1.5,
+                              "stop_seconds": 30}).status_code == 200
+    from geopulse.db import pool
+    from worker.main import maintenance
+
+    async def fixtures_and_retention():
+        async with pool.connection() as conn:
+            for wid, did, fid, age in [(a["workspace_id"], own["id"], fence_a["id"], 48),
+                                      (a["workspace_id"], own["id"], fence_a["id"], 1),
+                                      (b["workspace_id"], foreign["id"], fence_b["id"], 48)]:
+                await conn.execute("""INSERT INTO geofence_events(id,workspace_id,device_id,geofence_id,
+                    event_type,recorded_at,coordinates) VALUES (%s,%s,%s,%s,'enter',now()-make_interval(hours=>%s),
+                    ST_GeogFromText('SRID=4326;POINT(34.46 31.51)'))""", (uuid4(), wid, did, fid, age))
+        await maintenance()
+    client.portal.call(fixtures_and_retention)
+    events = client.get("/api/v1/geofence-events", headers=h).json()
+    assert len(events) == 1
+    assert datetime.fromisoformat(events[0]["recorded_at"]) > datetime.now(timezone.utc) - timedelta(days=1)
+    assert len(client.get("/api/v1/geofence-events", headers=hb).json()) == 1

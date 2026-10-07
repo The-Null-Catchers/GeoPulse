@@ -119,7 +119,7 @@ Use a current original UTC timestamp in real requests. Old timestamps outside wo
 
 ## Tests and evidence
 
-The current local evidence is **63 passing backend tests**, including real PostGIS/Redis integration tests, **7 passing web tests**, passing Ruff/mypy, TypeScript checking and Next.js production build. See [docs/VALIDATION.md](docs/VALIDATION.md) for the exact evidence and what was not executed.
+The spatial-search CI evidence includes **63 passing backend tests**, including real PostGIS/Redis integration tests, **7 passing web tests**, passing Ruff/mypy, TypeScript checking and Next.js production build. See [docs/VALIDATION.md](docs/VALIDATION.md) for the exact evidence and what was not executed.
 
 A measured run used 100 devices, updates every 2 seconds, and 3 WebSocket clients. All 1,000 accepted points reached every client, with no HTTP errors. Measured latency and resource scope are recorded in [docs/load-test-result.json](docs/load-test-result.json), not estimated. This short local test is not a production sizing guarantee.
 

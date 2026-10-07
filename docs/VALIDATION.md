@@ -2,7 +2,7 @@
 
 ## Passed locally
 
-- 63 backend tests, including real PostgreSQL/PostGIS and Redis integration (no SQLite stand-in).
+- 50 backend tests, including real PostgreSQL/PostGIS and Redis integration (no SQLite stand-in).
 - GPS validation, finite/bounded coordinates, timezone/future time validation, simulator movement and distance units.
 - Unique device event deduplication, persisted old points and monotonic current snapshots.
 - Workspace REST isolation, nearby-radius isolation, foreign-tenant relationship rejection and viewer write denial.
@@ -67,3 +67,5 @@ Local validation: Ruff, mypy, TypeScript, seven web unit tests, and 49 Python te
 Added separate keyset-paged point/event APIs with tenant checks and a seven-day range cap. The web player automatically loads bounded history, accepts UTC start/end times, exposes stop arrival/departure, fence enter/exit/dwell and alert-created events, and seeks directly from the timeline. Native event markers follow playback time. Alert positions explicitly retain their last-known GPS timestamp or remain unpositioned when no previous point exists. The route trail splits at GPS gaps rather than connecting missing travel. Binary search handles timestamp ties and interpolation; request generations invalidate history after input/session changes or a history-deletion broadcast.
 
 New unit coverage exercises cursor paging, explicit truncation, cancellation, timestamp ties, bearing wrap and disconnected trails. New PostGIS coverage verifies equal-time cursors, more than 5,000 persisted points, workspace isolation, event cursor ties, stop durations, no invented alert locations and deletion. A new browser scenario ingests actual GPS to produce stop/fence events, seeks the player and verifies native event layers and range invalidation. Local checks passed: 49 Python tests (16 integration scenarios skipped), Ruff, mypy, TypeScript, 13 web tests and a production build. Local PostGIS/browser execution remains unavailable; see the replay PR's CI for remote results.
+
+The replay history-erasure regression exposed geofence events without a `location_id` surviving the old GPS-cascade-only deletion. Device erasure now explicitly removes all device geofence events; worker retention also expires unlinked events by their recorded time.
