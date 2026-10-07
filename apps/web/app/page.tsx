@@ -5,6 +5,7 @@ import {GeoJSONSource,Map as GLMap} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {Activity,MapPin,Truck,Radio,Shield,Route,Layers,Search,ChevronRight,Play,Pause,Plus,LogOut,Download,Navigation,Target,Clock,ArrowUpRight,Zap} from 'lucide-react';
 import {api,configure,downloadTrips,type Device,type Point,type Alert} from '../lib/api';
+import SpatialSearch from '../components/SpatialSearch';
 import {interpolate} from '../lib/replay';
 import {filterDevices,emptyFilters,type FleetFilters} from '../lib/fleet';
 import type {FeatureCollection} from 'geojson';
@@ -13,8 +14,8 @@ type Detail={device:{driver_name:string|null;vehicle_name:string|null;team_name:
 type Fence={id:string;name:string;geometry:GeoJSON.MultiPolygon};
 const empty:FeatureCollection={type:'FeatureCollection',features:[]};
 const colors:Record<string,string>={moving:'#2ad1b0',idle:'#f6c568',stopped:'#8294ae',offline:'#f07575',online:'#78b4ff',unknown:'#657089'};
-const pages=['Live Map','Devices','Replay','Geofences','Alerts','Trips','Analytics','Developers'];
-const icons=[MapPin,Truck,Clock,Shield,Zap,Route,Activity,Radio];
+const pages=['Live Map','Devices','Replay','Geofences','Alerts','Trips','Analytics','Developers','Spatial Search'];
+const icons=[MapPin,Truck,Clock,Shield,Zap,Route,Activity,Radio,Search];
 function mapStyle(light=false):maplibregl.StyleSpecification{return {version:8,sources:{base:{type:'raster',tiles:[process.env.NEXT_PUBLIC_TILE_URL||'https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:process.env.NEXT_PUBLIC_TILE_ATTRIBUTION||'© OpenStreetMap contributors'}},layers:[{id:'base',type:'raster',source:'base',paint:{'raster-saturation':light?0:-.65,'raster-brightness-max':light?1:.65}}]};}
 export default function Home(){
  const [session,setSession]=useState<Session|null>(null),[register,setRegister]=useState(false),[busy,setBusy]=useState(false);
@@ -25,13 +26,16 @@ export default function Home(){
  const [developerView,setDeveloperView]=useState('api-keys');
  const [teams,setTeams]=useState<{id:string;name:string}[]>([]);
  const [mapReady,setMapReady]=useState(false);
+ const [searchTarget,setSearchTarget]=useState<[number,number]>([34.46,31.51]),[spatialResults,setSpatialResults]=useState<FeatureCollection>(empty);
+ const searchRef=useRef(false);searchRef.current=page==='Spatial Search';
+ const locateSpatial=useCallback((point:[number,number])=>{map.current?.easeTo({center:point,zoom:15});},[]);
  const [detail,setDetail]=useState<Detail|null>(null);
  const [attemptRows,setAttemptRows]=useState<Record<string,unknown>[]>([]);
  const [rows,setRows]=useState<Record<string,unknown>[]>([]),[secret,setSecret]=useState('');
  const generation=useRef(0);
  const mapContainer=useRef<HTMLDivElement>(null),map=useRef<GLMap|null>(null),drawRef=useRef(false),selectionRef=useRef(setSelected),devicesRef=useRef<Device[]>([]);
  drawRef.current=drawing;
- useEffect(()=>{map.current?.resize();},[page]);
+ useEffect(()=>{map.current?.resize();setDrawing(false);setVertices([]);setSpatialResults(empty);},[page]);
  const chosen=devices.find(d=>d.id===selected);
  const visible=useMemo(()=>filterDevices(devices,{...filters,query}),[devices,filters,query]);
  devicesRef.current=visible;
@@ -50,7 +54,7 @@ export default function Home(){
   void connect();const resync=setInterval(refresh,30000);return()=>{stopped=true;clearTimeout(timer);clearInterval(resync);ws?.close();};
  },[session,refresh]);
  useEffect(()=>{if(!session||!mapContainer.current)return;setMapReady(false);maplibregl.setWorkerUrl('/maplibre/maplibre-gl-worker.mjs');const m=new maplibregl.Map({container:mapContainer.current,style:mapStyle(light),center:[34.46,31.51],zoom:12,attributionControl:{compact:true}});map.current=m;
-  m.on('movestart',()=>setMapReady(false));m.on('idle',()=>{setMapReady(true);if(m.getLayer('fleet'))mapContainer.current?.setAttribute('data-fleet-features',String(m.queryRenderedFeatures({layers:['fleet','clusters']}).length));});
+  m.on('movestart',()=>setMapReady(false));m.on('idle',()=>{setMapReady(true);if(m.getLayer('fleet'))mapContainer.current?.setAttribute('data-fleet-features',String(m.queryRenderedFeatures({layers:['fleet','clusters']}).length));if(m.getLayer('spatial-points'))mapContainer.current?.setAttribute('data-spatial-features',String(m.queryRenderedFeatures({layers:['spatial-points','spatial-fill']}).length));});
   m.addControl(new maplibregl.NavigationControl(),'bottom-left');m.addControl(new maplibregl.FullscreenControl(),'bottom-left');
   m.on('load',()=>{
    setMapReady(true);
@@ -61,18 +65,22 @@ export default function Home(){
    m.addSource('trail',{type:'geojson',data:empty});m.addLayer({id:'trail',type:'line',source:'trail',paint:{'line-color':'#f6c568','line-width':4}});
    m.addSource('replay',{type:'geojson',data:empty});m.addLayer({id:'replay',type:'circle',source:'replay',paint:{'circle-radius':10,'circle-color':'#f6c568','circle-stroke-color':'#fff','circle-stroke-width':3}});
    m.addSource('draw',{type:'geojson',data:empty});m.addLayer({id:'draw',type:'line',source:'draw',paint:{'line-color':'#f6c568','line-width':3}});
+   m.addSource('spatial',{type:'geojson',data:empty});
+   m.addLayer({id:'spatial-fill',type:'fill',source:'spatial',filter:['==',['geometry-type'],'Polygon'],paint:{'fill-color':'#78b4ff','fill-opacity':.25}});
+   m.addLayer({id:'spatial-points',type:'circle',source:'spatial',filter:['==',['geometry-type'],'Point'],paint:{'circle-radius':14,'circle-color':'#78b4ff','circle-opacity':.6,'circle-stroke-width':2,'circle-stroke-color':'#fff'}});
    m.addSource('heat',{type:'geojson',data:empty});m.addLayer({id:'heat',type:'heatmap',source:'heat',paint:{'heatmap-weight':['get','weight'],'heatmap-radius':24,'heatmap-opacity':.7}});
    const current=devicesRef.current;(m.getSource('fleet') as GeoJSONSource).setData({type:'FeatureCollection',features:current.filter(d=>d.lng!==null&&d.lat!==null).map(d=>({type:'Feature',properties:{id:d.id,color:colors[d.state]},geometry:{type:'Point',coordinates:[d.lng!,d.lat!]}}))});
   });
   m.on('click','fleet',e=>{if(!drawRef.current)selectionRef.current(e.features?.[0]?.properties?.id||null);});
   m.on('click','clusters',async e=>{const f=e.features?.[0];if(!f||f.geometry.type!=='Point')return;const z=await (m.getSource('fleet') as GeoJSONSource).getClusterExpansionZoom(f.properties?.cluster_id);m.easeTo({center:f.geometry.coordinates as [number,number],zoom:z});});
-  m.on('click',e=>{if(drawRef.current)setVertices(v=>[...v,[e.lngLat.lng,e.lngLat.lat]]);});
+  m.on('click',e=>{if(drawRef.current)setVertices(v=>[...v,[e.lngLat.lng,e.lngLat.lat]]);else if(searchRef.current)setSearchTarget([e.lngLat.lng,e.lngLat.lat]);});
   return()=>{m.remove();map.current=null;};
  },[session,light]);
  useEffect(()=>{const m=map.current;if(!m)return;const update=()=>{(m.getSource('fleet') as GeoJSONSource|undefined)?.setData({type:'FeatureCollection',features:visible.filter(d=>d.lng!==null&&d.lat!==null).map(d=>({type:'Feature',properties:{id:d.id,color:colors[d.state]},geometry:{type:'Point',coordinates:[d.lng!,d.lat!]}}))});
   (m.getSource('fences') as GeoJSONSource|undefined)?.setData({type:'FeatureCollection',features:fences.map(f=>({type:'Feature',properties:{name:f.name},geometry:f.geometry}))});};if(m.isStyleLoaded())update();else m.once('load',update);
   if(follow&&visible.some(d=>d.id===selected)&&chosen?.lng!=null&&chosen?.lat!=null)m.easeTo({center:[chosen.lng,chosen.lat],duration:600});
  },[visible,fences,follow,selected,light,session]);
+ useEffect(()=>{const m=map.current;if(!m)return;const update=()=>{(m.getSource('spatial') as GeoJSONSource|undefined)?.setData(spatialResults);};if(m.isStyleLoaded())update();else m.once('load',update);return()=>{m.off('load',update);};},[spatialResults,light,session]);
  useEffect(()=>{const m=map.current;if(!m)return;const point=interpolate(points,cursor);const trail=points.filter(p=>Date.parse(p.recorded_at)<=cursor);if(point)trail.push(point);
   (m.getSource('trail') as GeoJSONSource|undefined)?.setData(trail.length>1?{type:'Feature',properties:{},geometry:{type:'LineString',coordinates:trail.map(p=>[p.lng,p.lat])}}:empty);
   (m.getSource('replay') as GeoJSONSource|undefined)?.setData(point?{type:'Feature',properties:{},geometry:{type:'Point',coordinates:[point.lng,point.lat]}}:empty);
@@ -81,7 +89,7 @@ export default function Home(){
  useEffect(()=>{(map.current?.getSource('draw') as GeoJSONSource|undefined)?.setData(vertices.length>1?{type:'Feature',properties:{},geometry:{type:'LineString',coordinates:vertices}}:empty);},[vertices]);
  useEffect(()=>{if(!session)return;setRows([]);const path=page==='Trips'?'/trips':page==='Developers'?'/'+developerView:null;if(path)api<Record<string,unknown>[]>(path).then(setRows).catch(e=>setError(String(e)));},[page,session,developerView]);
  useEffect(()=>{setDetail(null);if(!selected||!session)return;let active=true;const get=()=>api<Detail>('/devices/'+selected).then(d=>{if(active)setDetail(d);}).catch(e=>setError(String(e)));void get();const timer=setInterval(get,10000);return()=>{active=false;clearInterval(timer);};},[selected,session]);
- function clearWorkspace(){generation.current++;setSecret('');setAttemptRows([]);setRows([]);setDevices([]);setAlerts([]);setFences([]);setTeams([]);setQuery('');setFilters(emptyFilters);setSelected(null);setPoints([]);setPlaying(false);setError('');}
+ function clearWorkspace(){generation.current++;setSecret('');setAttemptRows([]);setRows([]);setDevices([]);setAlerts([]);setFences([]);setTeams([]);setQuery('');setFilters(emptyFilters);setSelected(null);setPoints([]);setPlaying(false);setDrawing(false);setVertices([]);setSpatialResults(empty);setSearchTarget([34.46,31.51]);setError('');}
  async function auth(form:FormData){setBusy(true);setError('');try{const body={email:form.get('email'),password:form.get('password'),...(register?{name:form.get('name'),organization:form.get('organization')}:{})};const data=await api<{access_token:string;workspace_id?:string;workspaces?:{id:string;name:string;role:string}[]}>('/auth/'+(register?'register':'login'),'POST',body);const wid=data.workspace_id||data.workspaces?.[0]?.id;if(!wid)throw new Error('No workspace membership');clearWorkspace();configure(data.access_token,wid);setSession({workspace:wid,name:data.workspaces?.[0]?.name||String(form.get('organization')),role:data.workspaces?.[0]?.role||'owner'});}catch(e){setError(String(e));}finally{setBusy(false);}}
  async function loadReplay(){if(!selected){setError('Select a device first');return;}try{const start=new Date(date+'T00:00:00Z').toISOString(),end=new Date(date+'T23:59:59.999Z').toISOString();const p=await api<Point[]>(`/devices/${selected}/history?start=${start}&end=${end}`);setPoints(p);setCursor(p.length?Date.parse(p[0].recorded_at):0);setPlaying(false);if(p[0])map.current?.easeTo({center:[p[0].lng,p[0].lat],zoom:14});if(!p.length)setError('No points in the selected UTC day');if(p.length===5000)setError('Replay limited to first 5,000 points; API supports pagination.');}catch(e){setError(String(e));}}
  async function saveFence(){if(vertices.length<3){setError('Draw at least three vertices');return;}const name=prompt('Geofence name');if(!name)return;try{await api('/geofences','POST',{name,geometry:{type:'Polygon',coordinates:[[...vertices,vertices[0]]]},dwell_seconds:300});setDrawing(false);setVertices([]);void refresh();}catch(e){setError(String(e));}}
@@ -98,7 +106,8 @@ export default function Home(){
  {secret&&<div className="secret">Secret · shown once <code>{secret}</code><button onClick={()=>{navigator.clipboard.writeText(secret).catch(()=>{});}}>Copy</button><button onClick={()=>setSecret('')}>Close</button></div>}
  <div className="metrics">{[['Tracked devices',devices.length,Radio],['Moving',devices.filter(d=>d.state==='moving').length,Navigation],['Idle / stopped',devices.filter(d=>['idle','stopped'].includes(d.state)).length,Clock],['Open alerts',alerts.filter(a=>a.state!=='resolved').length,Zap]].map(([label,value,Icon])=>{const I=Icon as typeof Radio;return <div key={String(label)}><span>{String(label)}<I size={17}/></span><strong>{String(value)}</strong><small>{label==='Tracked devices'?'Registered in this workspace':'Derived from current signals'}</small></div>;})}</div>
  <section className="fleet-filters" aria-label="Fleet filters"><div className="search"><Search size={16}/><input aria-label="Search devices" placeholder="Search devices…" value={query} onChange={e=>setQuery(e.target.value)}/></div><label>Status<select aria-label="Status" value={filters.state} onChange={e=>setFilters(f=>({...f,state:e.target.value}))}>{['all',...Object.keys(colors)].map(state=><option key={state} value={state}>{state==='all'?'All statuses':state}</option>)}</select></label><label>Team<select aria-label="Team" value={filters.team} onChange={e=>setFilters(f=>({...f,team:e.target.value}))}><option value="all">All teams</option><option value="unassigned">Unassigned</option>{teams.map(team=><option key={team.id} value={team.id}>{team.name}</option>)}</select></label><label>Device type<select aria-label="Device type" value={filters.type} onChange={e=>setFilters(f=>({...f,type:e.target.value}))}>{['all','vehicle','person','asset','iot'].map(type=><option key={type} value={type}>{type==='all'?'All types':type}</option>)}</select></label><label>Activation<select aria-label="Activation" value={filters.activation} onChange={e=>setFilters(f=>({...f,activation:e.target.value}))}><option value="all">All devices</option><option value="active">Active</option><option value="inactive">Inactive</option></select></label><span role="status">{visible.length} of {devices.length} loaded devices</span>{filtered&&<button onClick={()=>{setQuery('');setFilters(emptyFilters);}}>Clear filters</button>}</section>
- <div className="operations"><section className="map-card" style={{display:['Alerts','Trips','Developers','Devices'].includes(page)?'none':undefined}}><div className="map-toolbar"><div><span className="live-dot"/>{page==='Replay'?'Historical movement':page==='Analytics'?'Location density':'Live operations map'}</div><div><button onClick={fit}><Target size={16}/>Fit fleet</button><button onClick={()=>setFollow(!follow)} className={follow?'selected':''}><Navigation size={16}/>Follow</button>{page==='Geofences'&&<button onClick={()=>{setDrawing(!drawing);setVertices([]);}}><Plus size={16}/>{drawing?'Cancel drawing':'Draw geofence'}</button>}</div></div><div className="map" ref={mapContainer} data-testid="live-map" data-ready={mapReady}/>{drawing&&<div className="map-hint">Click the map to draw · {vertices.length} vertices<button onClick={saveFence}>Save geofence</button></div>}
+ {page==='Spatial Search'&&<SpatialSearch key={session.workspace} target={searchTarget} vertices={vertices} fences={fences} onDraw={()=>{setDrawing(true);setVertices([]);}} onResults={setSpatialResults} onLocate={locateSpatial}/>}
+ <div className="operations"><section className="map-card" style={{display:['Alerts','Trips','Developers','Devices'].includes(page)?'none':undefined}}><div className="map-toolbar"><div><span className="live-dot"/>{page==='Replay'?'Historical movement':page==='Analytics'?'Location density':'Live operations map'}</div><div><button onClick={fit}><Target size={16}/>Fit fleet</button><button onClick={()=>setFollow(!follow)} className={follow?'selected':''}><Navigation size={16}/>Follow</button>{page==='Geofences'&&<button onClick={()=>{setDrawing(!drawing);setVertices([]);}}><Plus size={16}/>{drawing?'Cancel drawing':'Draw geofence'}</button>}</div></div><div className="map" ref={mapContainer} data-testid="live-map" data-ready={mapReady}/>{drawing&&<div className="map-hint">Click the map to draw · {vertices.length} vertices{page==='Spatial Search'?<button onClick={()=>setDrawing(false)}>Finish drawing</button>:<button onClick={saveFence}>Save geofence</button>}</div>}
  {!devices.length&&<div className="map-empty"><Radio/><strong>Waiting for the first signal</strong><span>Add a device and connect the GPS simulator.<br/>Real updates will appear here.</span></div>}
  <div className="map-legend">{Object.entries(colors).slice(0,4).map(([s,c])=><span key={s}><i style={{background:c}}/>{s}</span>)}</div>
  {(page==='Replay'||page==='Analytics')&&<div className="replay"><input type="date" value={date} onChange={e=>setDate(e.target.value)}/><button onClick={page==='Replay'?loadReplay:loadHeat}>{page==='Replay'?'Load history':'Load heatmap'}</button>{page==='Replay'&&<><button disabled={!points.length} onClick={()=>setPlaying(!playing)}>{playing?<Pause size={18}/>:<Play size={18}/>}</button><input aria-label="Replay timeline" type="range" min={points.length?Date.parse(points[0].recorded_at):0} max={points.length?Date.parse(points[points.length-1].recorded_at):1} value={cursor} onChange={e=>setCursor(+e.target.value)}/><select value={speed} onChange={e=>setSpeed(+e.target.value)}>{[.5,1,2,5,10].map(s=><option key={s} value={s}>{s}×</option>)}</select><small>{cursor?new Date(cursor).toLocaleTimeString():'No replay loaded'}</small></>}</div>}</section>

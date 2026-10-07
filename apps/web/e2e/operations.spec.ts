@@ -57,3 +57,36 @@ test('Fleet filters combine team, type, activation and search in the registry',a
  await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Open dashboard'}).click();
  await expect(page.getByRole('status')).toHaveText('3 of 3 loaded devices');await expect(page.getByLabel('Team',{exact:true})).toHaveValue('all');
 });
+
+test('Spatial searches render persisted GPS and containing geofences in native layers',async({page,request})=>{
+ const url=process.env.E2E_API_URL||'http://localhost:8000';
+ const email=`spatial-${crypto.randomUUID()}@example.test`,password='spatial-test-passphrase-123';
+ const registered=await request.post(url+'/api/v1/auth/register',{data:{email,password,name:'Spatial QA',organization:'Spatial QA fleet'}});
+ expect(registered.status()).toBe(201);const auth=await registered.json();
+ const headers={Authorization:'Bearer '+auth.access_token,'X-Workspace-ID':auth.workspace_id};
+ const created=await request.post(url+'/api/v1/devices',{headers,data:{name:'Spatial tracker'}});expect(created.status()).toBe(201);const device=await created.json();
+ const fence=await request.post(url+'/api/v1/geofences',{headers,data:{name:'Spatial depot',center:[34.46,31.51],radius_m:100}});expect(fence.status()).toBe(201);const area=await fence.json();
+ const point={event_id:crypto.randomUUID(),recorded_at:new Date().toISOString(),lng:34.46,lat:31.51,speed:8,bearing:45,accuracy:5};
+ expect((await request.post(url+'/api/v1/locations',{headers:{Authorization:'Bearer '+device.token},data:point})).status()).toBe(202);
+ await page.goto('/');await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Open dashboard'}).click();
+ await page.getByRole('button',{name:/Spatial tracker/}).click();await expect(page.getByText('34.46000',{exact:false})).toBeVisible();
+ await page.getByRole('button',{name:'Spatial Search',exact:true}).click();
+ await page.getByRole('button',{name:'Search area',exact:true}).click();
+ await expect(page.getByTestId('spatial-summary')).toContainText('1 results on this page');
+ await expect(page.locator('.spatial-results')).toContainText('Spatial tracker');
+ await expect(page.getByTestId('live-map')).toHaveAttribute('data-spatial-features',/^[1-9]\d*$/);
+ await page.getByLabel('Spatial query').selectOption('fences');
+ await page.getByRole('button',{name:'Search area',exact:true}).click();
+ await expect(page.locator('.spatial-results')).toContainText('Spatial depot');
+ await expect(page.getByTestId('live-map')).toHaveAttribute('data-spatial-features',/^[1-9]\d*$/);
+ await page.getByLabel('Spatial query').selectOption('polygon');await page.getByLabel('Search area',{exact:true}).selectOption(area.id);
+ await page.getByRole('button',{name:'Search area',exact:true}).click();
+ await expect(page.locator('.spatial-results')).toContainText('Spatial tracker');
+ await page.getByLabel('Spatial query').selectOption('closest');
+ // Changing the search point invalidates old hits and the native result layer.
+ const map=page.getByTestId('live-map');await map.click({position:{x:80,y:80}});
+ await expect(page.getByTestId('spatial-summary')).toHaveCount(0);
+ await page.getByLabel('Spatial radius').fill('1');await page.getByRole('button',{name:'Search area',exact:true}).click();
+ await expect(page.getByTestId('spatial-summary')).toContainText('0 results on this page');
+ await expect(map).toHaveAttribute('data-spatial-features','0');
+});
