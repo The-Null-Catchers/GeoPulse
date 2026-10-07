@@ -51,6 +51,7 @@ from .schemas import (
 from geospatial import optimize
 from .spatial import router as spatial_router
 from .replay import router as replay_router
+from .analytics import router as analytics_router
 
 logger = logging.getLogger("geopulse")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -69,6 +70,7 @@ async def lifespan(app):
 app = FastAPI(title="GeoPulse API", version="0.1.0", lifespan=lifespan)
 app.include_router(spatial_router)
 app.include_router(replay_router)
+app.include_router(analytics_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.origins),
@@ -300,7 +302,8 @@ async def devices(
         return await many(
             conn,
             """SELECT d.id,d.name,d.device_type,d.active,d.team_id,d.driver_id,d.vehicle_id,d.last_seen,
-          s.recorded_at,s.speed,s.bearing,s.battery_level,s.distance_today_m,
+          s.recorded_at,s.speed,s.bearing,s.battery_level,
+          CASE WHEN s.metric_date=(now() AT TIME ZONE 'UTC')::date THEN s.distance_today_m ELSE 0 END distance_today_m,
           CASE WHEN NOT d.active THEN 'unknown' WHEN d.last_seen IS NULL THEN 'unknown'
                WHEN d.last_seen<now()-make_interval(secs=>o.offline_seconds) THEN 'offline' ELSE coalesce(s.state,'online') END state,
           ST_X(s.coordinates::geometry) lng, ST_Y(s.coordinates::geometry) lat
@@ -366,7 +369,7 @@ async def delete_history(device_id: UUID, ws=Depends(require("admin"))):
             "DELETE FROM webhook_deliveries WHERE device_id=%s AND workspace_id=%s", (device_id, ws["id"])
         )
         await conn.execute("DELETE FROM location_events WHERE device_id=%s", (device_id,))
-        for table in ("device_status", "trips", "stops", "geofence_state", "geofence_events", "historical_metrics", "alerts"):
+        for table in ("device_status", "trips", "stops", "geofence_state", "geofence_events", "historical_metrics", "alerts", "distance_reconciliation_jobs"):
             await conn.execute(
                 sql.SQL("DELETE FROM {} WHERE device_id=%s").format(sql.Identifier(table)), (device_id,)
             )  # table names fixed above
@@ -631,8 +634,10 @@ async def overview(ws=Depends(workspace)):
         }
         totals = await one(
             conn,
-            "SELECT count(*) FILTER(WHERE ended_at IS NULL) active_trips, coalesce(sum(distance_m),0) distance_today_m FROM trips WHERE workspace_id=%s AND started_at>=date_trunc('day',now())",
-            (ws["id"],),
+            """SELECT (SELECT count(*) FROM trips WHERE workspace_id=%s AND ended_at IS NULL) active_trips,
+               (SELECT coalesce(sum(distance_m),0) FROM historical_metrics
+                WHERE workspace_id=%s AND date=(now() AT TIME ZONE 'UTC')::date) distance_today_m""",
+            (ws["id"], ws["id"]),
         )
         alert_count = await one(
             conn, "SELECT count(*) open_alerts FROM alerts WHERE workspace_id=%s AND state<>'resolved'", (ws["id"],)
@@ -882,11 +887,16 @@ async def metrics():
             conn,
             "SELECT count(*) pending,coalesce(extract(epoch from now()-min(created_at)),0) age FROM outbox WHERE published_at IS NULL",
         )
+        repairs = await one(
+            conn,
+            "SELECT count(*) pending,coalesce(extract(epoch from now()-min(requested_at)),0) age FROM distance_reconciliation_jobs",
+        )
     heartbeat = await redis.get("worker:heartbeat")
     worker_age = (
         (datetime.now(timezone.utc) - datetime.fromisoformat(str(heartbeat))).total_seconds() if heartbeat else -1
     )
     payload = f"geopulse_outbox_pending {row['pending']}\ngeopulse_outbox_oldest_age_seconds {row['age']}\ngeopulse_worker_heartbeat_age_seconds {worker_age}\ngeopulse_websocket_connections {int(await redis.get('ws:connections') or 0)}\n"
+    payload += f"geopulse_distance_reconciliation_pending {repairs['pending']}\ngeopulse_distance_reconciliation_oldest_age_seconds {repairs['age']}\n"
     return Response(payload, media_type="text/plain; version=0.0.4")
 
 

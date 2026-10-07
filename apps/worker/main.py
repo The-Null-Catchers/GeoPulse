@@ -13,6 +13,7 @@ from geopulse.db import pool, redis, one, many
 from geopulse.main import emit
 from geospatial import state
 from geopulse.webhooks import enqueue
+from worker.reconciliation import schedule_distance, reconcile_once
 
 log = logging.getLogger("worker")
 stopping = asyncio.Event()
@@ -160,6 +161,7 @@ async def process_location(conn, payload):
     )
     if old and old["recorded_at"] >= event["recorded_at"]:
         # Durable history, without reversing current operational state.
+        await schedule_distance(conn, event)
         return "history.updated", {"device_id": did, "recorded_at": event["recorded_at"]}
     dt = (event["recorded_at"] - old["recorded_at"]).total_seconds() if old else 0
     continuous = old is not None and dt <= dev["offline_seconds"]
@@ -333,6 +335,9 @@ async def maintenance():
             "DELETE FROM historical_metrics h USING organizations o WHERE h.workspace_id=o.id AND h.date<current_date-o.retention_days"
         )
         await conn.execute(
+            "DELETE FROM distance_reconciliation_jobs j USING organizations o WHERE j.workspace_id=o.id AND j.date<current_date-o.retention_days"
+        )
+        await conn.execute(
             "DELETE FROM device_status s USING organizations o WHERE s.workspace_id=o.id AND s.recorded_at<now()-make_interval(days=>o.retention_days)"
         )
     await redis.set("worker:heartbeat", datetime.now(timezone.utc).isoformat(), ex=30)
@@ -350,8 +355,11 @@ async def run():
             try:
                 if loop.time() >= next_maintenance:
                     await maintenance()
+                    await reconcile_once()
                     next_maintenance = loop.time() + 10
                 if not await drain_once():
+                    if await reconcile_once():
+                        continue
                     try:
                         await asyncio.wait_for(stopping.wait(), timeout=0.1)
                     except asyncio.TimeoutError:
