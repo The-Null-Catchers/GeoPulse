@@ -71,3 +71,6 @@ New unit coverage exercises cursor paging, explicit truncation, cancellation, ti
 The replay history-erasure regression exposed geofence events without a `location_id` surviving the old GPS-cascade-only deletion. Device erasure now explicitly removes all device geofence events; worker retention also expires unlinked events by their recorded time.
 
 Remote validation: all seven jobs passed on run 37637940009 for commit 2ef813c. This includes 66 backend tests against PostGIS/Redis, 13 web unit tests, five Playwright scenarios, Flutter checks, Docker builds and security scans. Visual review of the generated replay screenshot then identified narrow controls in the map panel; the controls now wrap with minimum readable widths and screenshot capture returns to the top of the page.
+## Offline distance reconciliation increment
+
+Added migration 006, transactional per-device/day repair jobs, a PostGIS distance rebuild, bounded daily aggregate and administrative backfill APIs, and a daily Analytics view. Live positions stay monotonic; late points repair historical and snapshot distance only. Backfills are workspace-authorized and audited. History erasure removes pending jobs. Current validation is recorded on the increment's PR; full historical trip/stop/geofence reconciliation remains pending.

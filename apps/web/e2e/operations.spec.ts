@@ -122,3 +122,27 @@ test('Replay uses real stop/fence events, seeks on its timeline and clears chang
  await expect(page.getByTestId('replay-event')).toHaveCount(0);
  await expect(page.getByTestId('live-map')).toHaveAttribute('data-replay-events','0');
 });
+test('Late offline GPS repairs daily analytics without moving the live marker backwards',async({page,request})=>{
+ const url=process.env.E2E_API_URL||'http://localhost:8000';
+ const email=`distance-${crypto.randomUUID()}@example.test`,password='distance-test-passphrase-123';
+ const registered=await request.post(url+'/api/v1/auth/register',{data:{email,password,name:'Distance QA',organization:'Offline QA fleet'}});
+ expect(registered.status()).toBe(201);const auth=await registered.json();
+ const headers={Authorization:'Bearer '+auth.access_token,'X-Workspace-ID':auth.workspace_id};
+ const created=await request.post(url+'/api/v1/devices',{headers,data:{name:'Offline queue tracker'}});
+ expect(created.status()).toBe(201);const device=await created.json(),dh={Authorization:'Bearer '+device.token};
+ const at=new Date();at.setUTCDate(at.getUTCDate()-1);at.setUTCHours(12,0,0,0);const start=at.getTime(),day=at.toISOString().slice(0,10);
+ const point=(seconds:number,lat=31.51)=>({event_id:crypto.randomUUID(),recorded_at:new Date(start+seconds*1000).toISOString(),lat,lng:34.46,speed:5,bearing:90,accuracy:5});
+ for(const seconds of [0,40])expect((await request.post(url+'/api/v1/locations',{headers:dh,data:point(seconds)})).status()).toBe(202);
+ await expect.poll(async()=>{const r=await request.get(url+'/api/v1/devices',{headers});return Date.parse((await r.json())[0]?.recorded_at||'');},{timeout:15000}).toBe(start+40000);
+ await page.goto('/');await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Open dashboard'}).click();
+ await page.getByRole('button',{name:'Analytics',exact:true}).click();
+ const row=page.getByTestId('distance-day').filter({hasText:day});await expect(row).toContainText('0.00 km');
+ const late=point(20,31.511);expect((await request.post(url+'/api/v1/locations',{headers:dh,data:late})).status()).toBe(202);
+ await expect(row).toContainText('0.22 km',{timeout:20000});await expect(row).toContainText('Current');
+ const snapshot=(await (await request.get(url+'/api/v1/devices',{headers})).json())[0];expect(snapshot.lat).toBe(31.51);
+ expect((await (await request.post(url+'/api/v1/locations',{headers:dh,data:late})).json()).duplicates).toBe(1);
+ await page.getByRole('button',{name:/Offline queue tracker/}).click();
+ await expect(page.getByText('31.51000, 34.46000',{exact:true})).toBeVisible();
+ await page.evaluate(()=>window.scrollTo(0,0));
+ await page.screenshot({path:'../../docs/screenshots/offline-distance.png',fullPage:true});
+});
