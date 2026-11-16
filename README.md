@@ -139,6 +139,7 @@ cd apps/web && npm run typecheck && npm test && npm run build
 - [Spatial search API and map workflows](docs/SPATIAL_SEARCH.md)
 - [Realtime delivery semantics](docs/REALTIME.md)
 - [Historical replay and event timeline](docs/REPLAY.md)
+- [Late GPS and daily distance reconciliation](docs/DISTANCE_RECONCILIATION.md)
 - [Signed webhooks, receiver verification and retries](docs/WEBHOOKS.md)
 - [Security and privacy](docs/SECURITY.md)
 - [Deployment and OSRM data preparation](docs/DEPLOYMENT.md)

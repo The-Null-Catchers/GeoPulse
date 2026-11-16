@@ -629,3 +629,168 @@ def test_retention_expires_unlinked_geofence_events_per_workspace(client):
     assert len(events) == 1
     assert datetime.fromisoformat(events[0]["recorded_at"]) > datetime.now(timezone.utc) - timedelta(days=1)
     assert len(client.get("/api/v1/geofence-events", headers=hb).json()) == 1
+def repair_distances(client):
+    from worker.reconciliation import reconcile_once
+
+    async def all_jobs():
+        for _ in range(100):
+            if not await reconcile_once():
+                return
+        raise AssertionError("Reconciliation queue did not drain")
+
+    client.portal.call(all_jobs)
+    drain(client)
+
+
+def test_late_distance_repairs_metrics_without_rewinding_or_duplicate_counting(client):
+    _, h = account(client)
+    dev = create_device(client, h)
+    dh = {"Authorization": "Bearer " + dev["token"]}
+    t = (datetime.now(timezone.utc) - timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
+    day = t.date().isoformat()
+    base = "/api/v1/analytics/distance"
+    params = {"start": day, "end": day, "device_id": dev["id"]}
+    for stamp in (t, t + timedelta(seconds=40)):
+        assert client.post("/api/v1/locations", headers=dh, json=gps(stamp)).status_code == 202
+    drain(client)
+    assert client.get(base, headers=h, params=params).json()[0]["distance_m"] == 0
+    late = gps(t + timedelta(seconds=20), lat=31.511)
+    assert client.post("/api/v1/locations", headers=dh, json=late).json()["inserted"] == 1
+    drain(client)
+    assert client.get(base, headers=h, params=params).json()[0]["pending_devices"] == 1
+    repair_distances(client)
+    repaired = client.get(base, headers=h, params=params).json()[0]
+    assert 220 < repaired["distance_m"] < 225
+    assert repaired["pending_devices"] == 0
+    snapshot = client.get("/api/v1/devices", headers=h).json()[0]
+    assert snapshot["lat"] == 31.51
+    assert datetime.fromisoformat(snapshot["recorded_at"]) == t + timedelta(seconds=40)
+    assert snapshot["distance_today_m"] == 0  # Yesterday's total is not today's total.
+    assert client.post("/api/v1/locations", headers=dh, json=late).json()["duplicates"] == 1
+    drain(client)
+    repair_distances(client)
+    assert client.get(base, headers=h, params=params).json()[0] == repaired
+    assert client.post("/api/v1/locations", headers=dh, json=gps(t + timedelta(seconds=60), lat=31.512)).status_code == 202
+    drain(client)
+    assert 440 < client.get(base, headers=h, params=params).json()[0]["distance_m"] < 450
+    # An explicit repeat rebuild replaces the total, rather than adding the same segments again.
+    assert client.post(base + "/recalculate", headers=h, params=params).status_code == 202
+    repair_distances(client)
+    assert 440 < client.get(base, headers=h, params=params).json()[0]["distance_m"] < 450
+
+
+def test_distance_repair_crosses_utc_midnight_and_excludes_gaps_and_jumps(client):
+    _, h = account(client)
+    dev = create_device(client, h)
+    dh = {"Authorization": "Bearer " + dev["token"]}
+    t = (datetime.now(timezone.utc) - timedelta(days=2)).replace(hour=23, minute=59, second=40, microsecond=0)
+    for stamp in (t, t + timedelta(seconds=40)):
+        client.post("/api/v1/locations", headers=dh, json=gps(stamp))
+    drain(client)
+    client.post("/api/v1/locations", headers=dh, json=gps(t + timedelta(seconds=10), lat=31.511))
+    drain(client)
+    repair_distances(client)
+    params = {"start": t.date().isoformat(), "end": (t + timedelta(days=1)).date().isoformat(), "device_id": dev["id"]}
+    rows = client.get("/api/v1/analytics/distance", headers=h, params=params).json()
+    assert len(rows) == 2 and all(110 < row["distance_m"] < 113 for row in rows)
+    # A point one hour later starts a disconnected segment; an immediate continental jump is rejected.
+    client.post("/api/v1/locations", headers=dh, json=gps(t + timedelta(hours=1), lat=31.52))
+    client.post("/api/v1/locations", headers=dh, json=gps(t + timedelta(hours=1, seconds=1), lat=51.51))
+    drain(client)
+    client.post("/api/v1/locations", headers=dh, json=gps(t + timedelta(hours=1, seconds=1), lat=51.51,
+                    event_id="ffffffff-ffff-ffff-ffff-ffffffffffff"))
+    drain(client)
+    repair_distances(client)
+    final = client.get("/api/v1/analytics/distance", headers=h, params=params).json()
+    assert [row["distance_m"] for row in final] == pytest.approx([row["distance_m"] for row in rows])
+
+
+def test_distance_jobs_wait_for_pending_locations_and_erase_with_history(client):
+    _, h = account(client)
+    dev = create_device(client, h)
+    dh = {"Authorization": "Bearer " + dev["token"]}
+    t = datetime.now(timezone.utc) - timedelta(minutes=5)
+    client.post("/api/v1/locations", headers=dh, json=gps(t))
+    drain(client)
+    client.post("/api/v1/locations", headers=dh, json=gps(t - timedelta(seconds=10), lat=31.511))
+    drain(client)
+    client.post("/api/v1/locations", headers=dh, json=gps(t + timedelta(seconds=10)))
+    from worker.reconciliation import reconcile_once
+    assert client.portal.call(reconcile_once) is False
+    assert client.delete("/api/v1/devices/" + dev["id"] + "/history", headers=h).status_code == 204
+    drain(client)
+    repair_distances(client)
+    params = {"start": t.date().isoformat(), "end": (t + timedelta(days=1)).date().isoformat(), "device_id": dev["id"]}
+    assert all(row["distance_m"] == row["pending_devices"] == 0
+               for row in client.get("/api/v1/analytics/distance", headers=h, params=params).json())
+
+
+def test_daily_distance_api_is_scoped_bounded_and_available_to_read_keys(client):
+    _, h = account(client)
+    _, foreign_headers = account(client)
+    dev = create_device(client, h)
+    foreign = create_device(client, foreign_headers)
+    day = datetime.now(timezone.utc).date()
+    params = {"start": day.isoformat(), "end": day.isoformat(), "device_id": dev["id"]}
+    url = "/api/v1/analytics/distance"
+    assert client.get(url, headers=foreign_headers, params=params).status_code == 404
+    assert client.get(url, headers=h, params={**params, "device_id": foreign["id"]}).status_code == 404
+    assert client.get(url, headers={"X-Workspace-ID": h["X-Workspace-ID"]}, params=params).status_code == 401
+    assert client.get(url, headers=h, params={**params, "end": (day - timedelta(days=1)).isoformat()}).status_code == 422
+    assert client.get(url, headers=h, params={**params, "end": (day + timedelta(days=90)).isoformat()}).status_code == 422
+    key = client.post("/api/v1/api-keys", headers=h, json={"name": "Distance reader", "scopes": ["read"]}).json()
+    read_headers = {"Authorization": "Bearer " + key["secret"], "X-Workspace-ID": h["X-Workspace-ID"]}
+    assert client.get(url, headers=read_headers, params=params).status_code == 200
+    assert client.post(url + "/recalculate", headers=read_headers, params=params).status_code == 403
+    assert client.post(url + "/recalculate", headers=foreign_headers, params=params).status_code == 404
+    assert client.post(url + "/recalculate", headers=h,
+                      params={**params, "end": (day + timedelta(days=1)).isoformat()}).status_code == 422
+    assert client.post(url + "/recalculate", headers=h,
+                      params={**params, "start": (day - timedelta(days=91)).isoformat()}).status_code == 422
+def test_distance_reconciliation_rollback_preserves_job_for_retry(client, monkeypatch):
+    _, h = account(client)
+    dev = create_device(client, h)
+    dh = {"Authorization": "Bearer " + dev["token"]}
+    t = datetime.now(timezone.utc) - timedelta(minutes=5)
+    client.post("/api/v1/locations", headers=dh, json=gps(t))
+    drain(client)
+    client.post("/api/v1/locations", headers=dh, json=gps(t - timedelta(seconds=10), lat=31.511))
+    drain(client)
+    from worker import reconciliation
+    original = reconciliation.emit
+
+    async def fail_emit(*args, **kwargs):
+        raise RuntimeError("Simulated transactional publication failure")
+
+    monkeypatch.setattr(reconciliation, "emit", fail_emit)
+    with pytest.raises(RuntimeError, match="Simulated transactional"):
+        client.portal.call(reconciliation.reconcile_once)
+    params = {"start": (t - timedelta(seconds=10)).date().isoformat(), "end": t.date().isoformat(), "device_id": dev["id"]}
+    rows = client.get("/api/v1/analytics/distance", headers=h, params=params).json()
+    assert sum(row["pending_devices"] for row in rows) >= 1
+    assert sum(row["distance_m"] for row in rows) == 0
+    monkeypatch.setattr(reconciliation, "emit", original)
+    repair_distances(client)
+    rows = client.get("/api/v1/analytics/distance", headers=h, params=params).json()
+    assert 110 < sum(row["distance_m"] for row in rows) < 113
+    assert sum(row["pending_devices"] for row in rows) == 0
+def test_distance_repair_excludes_expired_samples_before_retention_cleanup(client):
+    _, h = account(client)
+    dev = create_device(client, h)
+    dh = {"Authorization": "Bearer " + dev["token"]}
+    cutoff = datetime.now(timezone.utc) - timedelta(days=1)
+    for stamp in (cutoff - timedelta(seconds=30), cutoff + timedelta(seconds=60)):
+        assert client.post("/api/v1/locations", headers=dh, json=gps(stamp)).status_code == 202
+    drain(client)
+    assert client.patch("/api/v1/settings", headers=h,
+                        json={"retention_days": 1, "offline_seconds": 120,
+                              "moving_speed": 1.5, "stop_seconds": 180}).status_code == 200
+    assert client.post("/api/v1/locations", headers=dh,
+                       json=gps(cutoff + timedelta(seconds=30), lat=31.511)).json()["inserted"] == 1
+    drain(client)
+    repair_distances(client)
+    params = {"start": cutoff.date().isoformat(), "end": (cutoff + timedelta(days=1)).date().isoformat(),
+              "device_id": dev["id"]}
+    rows = client.get("/api/v1/analytics/distance", headers=h, params=params).json()
+    # The expired A->B segment is absent even while its raw GPS row awaits retention cleanup.
+    assert 110 < sum(row["distance_m"] for row in rows) < 113
