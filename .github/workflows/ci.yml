@@ -76,7 +76,8 @@ jobs:
       - run: docker build -f infra/docker.Dockerfile -t geopulse-api:test .
       - run: docker build -f apps/web/Dockerfile -t geopulse-web:test .
   browser:
-    runs-on: ubuntu-latest
+    # Keep the pinned Playwright browser compatible with the runner OS.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
