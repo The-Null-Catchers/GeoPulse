@@ -1,0 +1,41 @@
+{
+  "repository": "The-Null-Catchers/GeoPulse",
+  "defaultBranch": "main",
+  "baseSHA": "8887932750c4f9c03d9b2cadd3731b38c0179bbc",
+  "backupTag": "cleanup-backup-2026-11-16",
+  "delete": [
+    {
+      "name": "feat/offline-distance-reconciliation",
+      "sha": "b018d22ac257b78057910c389766e54d5e4aa464",
+      "reason": "ancestor"
+    },
+    {
+      "name": "feat/offline-distance-reconciliation-ready",
+      "sha": "9a7982c1b827f43c98ce18131cc2b99dbb373f8a",
+      "reason": "ancestor"
+    },
+    {
+      "name": "feat/replay-timeline",
+      "sha": "b16721b4470d2e8d04a120f56e16d16fc133d8db",
+      "reason": "ancestor"
+    },
+    {
+      "name": "feat/spatial-operations",
+      "sha": "6c8848eabff7a89edaf969356f3a5081271e3511",
+      "reason": "ancestor"
+    },
+    {
+      "name": "fix/pr-validation-20261116",
+      "sha": "8f81db3b07f2462d58b9ae0fb10c98bfc254efc8",
+      "reason": "tree-identical"
+    }
+  ],
+  "status": "Explicitly approved: archive before lease-guarded deletion",
+  "archiveParents": [
+    "b018d22ac257b78057910c389766e54d5e4aa464",
+    "9a7982c1b827f43c98ce18131cc2b99dbb373f8a",
+    "b16721b4470d2e8d04a120f56e16d16fc133d8db",
+    "6c8848eabff7a89edaf969356f3a5081271e3511",
+    "8f81db3b07f2462d58b9ae0fb10c98bfc254efc8"
+  ]
+}
