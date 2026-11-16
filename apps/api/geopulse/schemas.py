@@ -66,6 +66,41 @@ class Batch(Input):
     points: list[Location] = Field(min_length=1, max_length=500)
 
 
+def validate_polygon(value):
+    if not isinstance(value, dict) or value.get("type") not in ("Polygon", "MultiPolygon"):
+        raise ValueError("Polygon or MultiPolygon required")
+    polygons = [value.get("coordinates")] if value["type"] == "Polygon" else value.get("coordinates")
+    if not isinstance(polygons, list) or not polygons or len(polygons) > 100:
+        raise ValueError("Invalid or oversized polygon")
+    count = 0
+    for polygon in polygons:
+        if not isinstance(polygon, list) or not polygon:
+            raise ValueError("Empty or invalid polygon")
+        for ring in polygon:
+            if not isinstance(ring, list) or len(ring) < 4 or ring[0] != ring[-1]:
+                raise ValueError("Rings must be closed with at least 4 positions")
+            count += len(ring)
+            if count > 5000:
+                raise ValueError("At most 5,000 positions allowed")
+            for position in ring:
+                if not isinstance(position, (list, tuple)) or len(position) != 2 or not all(
+                    type(x) in (int, float) and math.isfinite(x) for x in position
+                ):
+                    raise ValueError("Invalid coordinate")
+                if not -180 <= position[0] <= 180 or not -90 <= position[1] <= 90:
+                    raise ValueError("Coordinate out of bounds")
+    return value
+
+
+class PolygonQuery(Input):
+    geometry: dict
+
+    @field_validator("geometry")
+    @classmethod
+    def polygon(cls, value):
+        return validate_polygon(value)
+
+
 class Fence(Named):
     geometry: dict | None = None
     center: tuple[float, float] | None = None
@@ -75,27 +110,7 @@ class Fence(Named):
     @field_validator("geometry")
     @classmethod
     def polygon(cls, value):
-        if value is None:
-            return value
-        if value.get("type") not in ("Polygon", "MultiPolygon"):
-            raise ValueError("Polygon or MultiPolygon required")
-        polygons = [value.get("coordinates")] if value["type"] == "Polygon" else value.get("coordinates")
-        if not isinstance(polygons, list) or not polygons or len(str(value)) > 100000:
-            raise ValueError("Invalid or oversized polygon")
-        for polygon in polygons:
-            if not polygon:
-                raise ValueError("Empty polygon")
-            for ring in polygon:
-                if len(ring) < 4 or ring[0] != ring[-1]:
-                    raise ValueError("Rings must be closed with at least 4 positions")
-                for position in ring:
-                    if len(position) != 2 or not all(
-                        isinstance(x, (int, float)) and math.isfinite(x) for x in position
-                    ):
-                        raise ValueError("Invalid coordinate")
-                    if not -180 <= position[0] <= 180 or not -90 <= position[1] <= 90:
-                        raise ValueError("Coordinate out of bounds")
-        return value
+        return None if value is None else validate_polygon(value)
 
 
 class RouteCreate(Named):

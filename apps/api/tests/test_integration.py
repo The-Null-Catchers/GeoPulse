@@ -367,3 +367,143 @@ def test_registration_rate_limit_is_enforced(client):
         },
     )
     assert r.status_code == 429 and r.headers["Retry-After"] == "3600"
+
+
+def spatial_polygon():
+    return {"type": "Polygon", "coordinates": [
+        [[34.45, 31.50], [34.49, 31.50], [34.49, 31.54], [34.45, 31.54], [34.45, 31.50]],
+        [[34.47, 31.52], [34.48, 31.52], [34.48, 31.53], [34.47, 31.53], [34.47, 31.52]],
+    ]}
+
+
+def test_spatial_polygon_boundary_hole_pagination_and_read_key(client):
+    a, h = account(client)
+    _, hb = account(client)
+    expected = []
+    for name, lng, lat in [("Inside", 34.46, 31.51), ("Boundary", 34.45, 31.51),
+                           ("Hole", 34.475, 31.525), ("Outside", 34.50, 31.51),
+                           ("Inactive", 34.46, 31.51), ("Foreign", 34.46, 31.51)]:
+        headers = hb if name == "Foreign" else h
+        dev = client.post("/api/v1/devices", headers=headers, json={"name": name}).json()
+        assert client.post("/api/v1/locations", headers={"Authorization": "Bearer " + dev["token"]},
+                           json=gps(lng=lng, lat=lat)).status_code == 202
+        if name == "Inactive":
+            assert client.patch("/api/v1/devices/" + dev["id"], headers=h, json={"active": False}).status_code == 200
+        if name in ("Inside", "Boundary"):
+            expected.append(dev["id"])
+    drain(client)
+    key = client.post("/api/v1/api-keys", headers=h,
+                      json={"name": "Spatial reader", "scopes": ["read"], "lifetime_days": 1}).json()
+    kh = {"Authorization": "Bearer " + key["secret"], "X-Workspace-ID": a["workspace_id"]}
+    url = "/api/v1/spatial/devices/in-polygon"
+    response = client.post(url + "?limit=1", headers=kh, json={"geometry": spatial_polygon()})
+    assert response.status_code == 200, response.text
+    first = response.json()
+    second = client.post(url + "?limit=1&offset=1", headers=kh, json={"geometry": spatial_polygon()}).json()
+    assert first["has_more"] and not second["has_more"]
+    assert [first["items"][0]["id"], second["items"][0]["id"]] == sorted(expected)
+    assert client.post("/api/v1/devices", headers=kh, json={"name": "Forbidden"}).status_code == 403
+    assert client.post(url, headers={"Authorization": "Bearer " + key["secret"],
+                                    "X-Workspace-ID": hb["X-Workspace-ID"]},
+                       json={"geometry": spatial_polygon()}).status_code == 403
+    # The geometry query is available to viewer users as well as read-only keys.
+    from geopulse.db import pool
+
+    async def downgrade():
+        async with pool.connection() as conn:
+            await conn.execute("UPDATE memberships SET role='viewer' WHERE workspace_id=%s AND user_id=%s",
+                               (a["workspace_id"], a["user_id"]))
+    client.portal.call(downgrade)
+    assert client.post(url, headers=h, json={"geometry": spatial_polygon()}).status_code == 200
+    invalid = {"type": "Polygon", "coordinates": [[[0, 0], [1, 1], [1, 0], [0, 1], [0, 0]]]}
+    assert client.post(url, headers=h, json={"geometry": invalid}).status_code == 422
+
+
+def test_spatial_closest_is_bounded_active_and_tenant_scoped(client):
+    _, h = account(client)
+    _, hb = account(client)
+    own = create_device(client, h)
+    foreign = create_device(client, hb)
+    for dev, lng in [(own, 34.461), (foreign, 34.46)]:
+        assert client.post("/api/v1/locations", headers={"Authorization": "Bearer " + dev["token"]},
+                           json=gps(lng=lng)).status_code == 202
+    drain(client)
+    url = "/api/v1/spatial/devices/closest?lat=31.51&lng=34.46"
+    response = client.get(url + "&radius=1000", headers=h)
+    assert response.status_code == 200, response.text
+    assert response.json()["id"] == own["id"]
+    assert 90 < response.json()["distance_m"] < 100  # 0.001 longitude at this latitude, meters.
+    assert client.get(url + "&radius=10", headers=h).json() is None
+    assert client.patch("/api/v1/devices/" + own["id"], headers=h, json={"active": False}).status_code == 200
+    assert client.get(url + "&radius=1000", headers=h).json() is None
+    for params in ["lat=nan&lng=0", "lat=0&lng=inf", "lat=91&lng=0", "lat=0&lng=0&radius=0"]:
+        assert client.get("/api/v1/spatial/devices/closest?" + params, headers=h).status_code == 422
+
+
+def test_spatial_geofence_containment_respects_holes_boundaries_and_enabled(client):
+    _, h = account(client)
+    _, hb = account(client)
+    body = {"name": "Operating area", "geometry": spatial_polygon()}
+    own = client.post("/api/v1/geofences", headers=h, json=body).json()
+    assert client.post("/api/v1/geofences", headers=hb, json=body).status_code == 201
+    url = "/api/v1/spatial/geofences/containing"
+    for lng, lat in [(34.46, 31.51), (34.45, 31.51)]:
+        response = client.get(url, headers=h, params={"lng": lng, "lat": lat})
+        assert response.status_code == 200, response.text
+        assert [r["id"] for r in response.json()["items"]] == [own["id"]]
+    assert client.get(url, headers=h, params={"lng": 34.475, "lat": 31.525}).json()["items"] == []
+    from geopulse.db import pool
+
+    async def disable():
+        async with pool.connection() as conn:
+            await conn.execute("UPDATE geofences SET enabled=false WHERE id=%s", (own["id"],))
+    client.portal.call(disable)
+    assert client.get(url, headers=h, params={"lng": 34.46, "lat": 31.51}).json()["items"] == []
+
+
+def test_spatial_route_and_stop_search_isolation_and_time_window(client):
+    a, h = account(client)
+    b, hb = account(client)
+    own, foreign = create_device(client, h), create_device(client, hb)
+    for dev in (own, foreign):
+        assert client.post("/api/v1/locations", headers={"Authorization": "Bearer " + dev["token"]},
+                           json=gps()).status_code == 202
+    drain(client)
+    from geopulse.db import pool
+
+    route_id, foreign_route = str(uuid4()), str(uuid4())
+    stamp = datetime.now(timezone.utc) - timedelta(minutes=5)
+    stop_id = str(uuid4())
+
+    async def fixtures():
+        async with pool.connection() as conn:
+            for wid, rid in [(a["workspace_id"], route_id), (b["workspace_id"], foreign_route)]:
+                await conn.execute("""INSERT INTO routes(id,workspace_id,name,geometry,waypoints,distance_m,duration_s,provider)
+                    VALUES (%s,%s,'Spatial test route',ST_GeogFromText('SRID=4326;LINESTRING(34.46 31.50,34.46 31.55)'),
+                    '[]',5550,600,'test-fixture')""", (rid, wid))
+            for sid, wid, did, arrived, lng in [
+                (stop_id, a["workspace_id"], own["id"], stamp, 34.46),
+                (uuid4(), b["workspace_id"], foreign["id"], stamp, 34.46),
+                (uuid4(), a["workspace_id"], own["id"], stamp - timedelta(days=3), 34.46),
+                (uuid4(), a["workspace_id"], own["id"], stamp, 35.0),
+            ]:
+                await conn.execute("""INSERT INTO stops(id,workspace_id,device_id,arrived_at,departed_at,coordinates)
+                    VALUES (%s,%s,%s,%s,%s,ST_SetSRID(ST_MakePoint(%s,31.51),4326)::geography)""",
+                    (sid, wid, did, arrived, arrived + timedelta(seconds=60), lng))
+    client.portal.call(fixtures)
+    url = "/api/v1/spatial/devices/near-route"
+    result = client.get(url, headers=h, params={"route_id": route_id, "radius": 10})
+    assert result.status_code == 200, result.text
+    assert [r["id"] for r in result.json()["items"]] == [own["id"]]
+    assert result.json()["items"][0]["distance_m"] < 0.1
+    assert client.get(url, headers=h, params={"route_id": foreign_route}).status_code == 404
+    assert client.get(url, headers=hb, params={"route_id": route_id}).status_code == 404
+    params = {"lat": 31.51, "lng": 34.46, "radius": 100,
+              "start": (stamp - timedelta(hours=1)).isoformat(), "end": (stamp + timedelta(hours=1)).isoformat()}
+    url = "/api/v1/spatial/stops/nearby"
+    result = client.get(url, headers=h, params=params)
+    assert result.status_code == 200, result.text
+    assert [r["id"] for r in result.json()["items"]] == [stop_id]
+    for start, end in [("2026-01-01", "2026-01-02"), (params["end"], params["start"]),
+                       ((stamp - timedelta(days=32)).isoformat(), params["end"])]:
+        assert client.get(url, headers=h, params={**params, "start": start, "end": end}).status_code == 422

@@ -39,7 +39,7 @@ Playwright authenticated a workspace, ingested two actual GPS events, blocked de
 | 4: history/trips/stops/replay | Core implemented; late-derived reconciliation and event overlays pending |
 | 5: geofences/events/alerts | Core implemented and tested; richer alert-rule workflows pending |
 | 6: routes/assignment/deviation/ETA | Core implemented; OSRM live validation and missed-stop/late-arrival workflows pending |
-| 7: optimization/spatial queries/analytics | Haversine heuristic, nearby API and heatmap; full spatial queries/analytics pending |
+| 7: optimization/spatial queries/analytics | Haversine heuristic, nearby API, spatial search workflows and heatmap; advanced analytics pending |
 | 8: Flutter/background/offline | Foreground source and queue foundation; background/hardware work pending |
 | 9: webhooks/reports/keys/audit | Keys/audit/saved-view APIs/trip CSV implemented; signed durable webhooks implemented; more exports pending |
 | 10: performance/partitioning/security | 100-device test and regression controls; partitioning/soak/external security pending |
@@ -55,3 +55,9 @@ Validate self-hosted OSRM against a real regional dataset, implement offline his
 The dashboard combines name, all derived statuses, team (including unassigned), device type and activation. The same filtered snapshot feeds native map layers, fit bounds, fleet list and device registry. Filters reset on sign-out/sign-in; workspace metrics retain their existing workspace scope. Counts explicitly describe loaded devices: this UI currently loads the first 1,000 device records and 1,000 teams rather than claiming a complete larger fleet search.
 
 Local validation: TypeScript checking, seven web unit tests and production build. Added Playwright coverage checks native marker removal/restoration and intersecting team/type/activation/search filters, including inactive devices without GPS and session reset. Browser execution is recorded by CI; local Docker integration is unavailable in this workspace.
+
+## Spatial operations increment
+
+Added closest-device, Polygon/MultiPolygon device coverage, route-corridor device queries, enabled geofences containing a point, and dated nearby-stop searches. The map page renders search results using native sources/layers and exposes bounded result paging independently of the loaded fleet. Migration 004 adds indexes for geometry-cast snapshot queries and stop searches. Read-only API keys and viewer users can use the POST polygon query without gaining mutation permission.
+
+Local validation: Ruff, mypy, TypeScript, seven web unit tests, and 49 Python tests passed. Four new real-PostGIS integration cases cover boundaries/holes, paging, metric distance/radius, inactive devices, tenant isolation, foreign routes, read-only API keys, invalid polygon topology, disabled fences and stop time windows. Local execution skips 14 integration tests because this workspace has no running PostGIS/Redis. A new Playwright scenario checks actual ingested GPS and containing fences rendered in native layers, area queries and invalidation after changing the search point. Remote CI must pass these integration/browser tests before merge.

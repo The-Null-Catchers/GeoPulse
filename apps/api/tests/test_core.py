@@ -78,3 +78,25 @@ def test_simulator_path_moves():
     b = path_point(100)
     assert 98 < distance(a[:2], b[:2]) < 102
     assert a != b
+
+
+@pytest.mark.parametrize(
+    "geometry",
+    [
+        {"type": "Polygon", "coordinates": [None]},
+        {"type": "Polygon", "coordinates": [[None]]},
+        {"type": "Polygon", "coordinates": [[[1, 2, 3, 1]]]},
+        {"type": "Polygon", "coordinates": [[[None, None, None, None]]]},
+        {"type": "Polygon", "coordinates": [[[True, 0], [1, 0], [1, 1], [True, 0]]]},
+        {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, float("inf")], [0, 0]]]},
+        {"type": "Point", "coordinates": [0, 0]},
+        {"type": "MultiPolygon", "coordinates": []},
+        {"type": "Polygon", "coordinates": [[[0, 0]] * 5001]},
+    ],
+)
+def test_malformed_spatial_polygons_are_validation_errors(geometry):
+    from geopulse.schemas import PolygonQuery
+
+    for model, extra in [(PolygonQuery, {}), (Fence, {"name": "Invalid"})]:
+        with pytest.raises(ValidationError):
+            model(geometry=geometry, **extra)

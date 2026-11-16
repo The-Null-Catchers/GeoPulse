@@ -49,6 +49,7 @@ from .schemas import (
     AcceptInvite,
 )
 from geospatial import optimize
+from .spatial import router as spatial_router
 
 logger = logging.getLogger("geopulse")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -65,6 +66,7 @@ async def lifespan(app):
 
 
 app = FastAPI(title="GeoPulse API", version="0.1.0", lifespan=lifespan)
+app.include_router(spatial_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.origins),

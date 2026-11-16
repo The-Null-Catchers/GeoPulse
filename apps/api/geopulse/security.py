@@ -75,6 +75,15 @@ async def user(authorization: str = Header(default="")):
 
 
 async def workspace(request: Request, x_workspace_id: UUID = Header(), authorization: str = Header(default="")):
+    return await authorize_workspace(request, x_workspace_id, authorization)
+
+
+async def read_workspace(request: Request, x_workspace_id: UUID = Header(), authorization: str = Header(default="")):
+    """Read-only query endpoints may use POST for a complex geometry body."""
+    return await authorize_workspace(request, x_workspace_id, authorization, read_only=True)
+
+
+async def authorize_workspace(request, x_workspace_id, authorization, read_only=False):
     if not authorization.startswith("Bearer "):
         raise HTTPException(401, "Bearer token required")
     token = authorization[7:]
@@ -85,7 +94,7 @@ async def workspace(request: Request, x_workspace_id: UUID = Header(), authoriza
                 "SELECT * FROM api_keys WHERE secret_hash=%s AND workspace_id=%s AND revoked_at IS NULL AND expires_at>now()",
                 (digest(token), x_workspace_id),
             )
-            scope = "write" if request.method not in ("GET", "HEAD") else "read"
+            scope = "read" if read_only or request.method in ("GET", "HEAD") else "write"
             if not key or scope not in key["scopes"]:
                 raise HTTPException(403, "API key lacks required workspace scope")
             await conn.execute("UPDATE api_keys SET last_used_at=now() WHERE id=%s", (key["id"],))

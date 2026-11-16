@@ -46,7 +46,7 @@ The simulator service does not automatically start with the main stack. `--seed`
 | Spatial processing | Circle/polygon fences, enter/exit/dwell, states, stop/trip detection | Late older points do not rebuild derived historical events |
 | Routes | OSRM adapter, assignment, actual distance-based deviation, baseline ETA | Requires prepared self-hosted routing dataset; no road-data bundle included |
 | Optimization | Deterministic nearest-neighbour + 2-opt | Haversine distance, not road-time/VRP optimization |
-| Spatial queries | PostGIS radius search, historical grid heatmap | Full polygon/closest/route search UI pending |
+| Spatial queries | PostGIS radius, closest device, polygon coverage, route corridor, containing fences, dated stop search, historical grid heatmap | Spatial results use bounded pages; richer analytics pending |
 | Dashboard | Live clustered map, combined state/team/type/activation filters and search, follow/fit, device panel, polygon drawing, replay, alerts, trips CSV | Filters apply to the first 1,000 loaded devices; route editor and many management screens pending |
 | Developer API | OpenAPI, scoped hashed API keys, audit, saved views, signed durable webhooks and delivery history | Broader SDKs pending |
 | Privacy | Explicit foreground consent, disable device, delete device history, retention for GPS and derived history | Full-device exports and completed privacy UX pending |
@@ -136,6 +136,7 @@ cd apps/web && npm run typecheck && npm test && npm run build
 
 - [Architecture and decisions](docs/ARCHITECTURE.md)
 - [Geospatial engine and correctness limits](docs/GEO_ENGINE.md)
+- [Spatial search API and map workflows](docs/SPATIAL_SEARCH.md)
 - [Realtime delivery semantics](docs/REALTIME.md)
 - [Signed webhooks, receiver verification and retries](docs/WEBHOOKS.md)
 - [Security and privacy](docs/SECURITY.md)
