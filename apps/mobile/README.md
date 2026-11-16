@@ -2,7 +2,7 @@
 
 This milestone includes an operator map with polling, secure token storage, refresh rotation, explicit foreground tracking consent, SQLite buffering and batch acknowledgements. It is **not a completed mobile release**. Background services, realtime operator subscriptions, historical replay and full platform integration tests are pending.
 
-Flutter SDK is required. Bootstrap platform directories:
+Use Flutter 3.47.6, matching the SDK pinned in CI. Bootstrap platform directories:
 
 ```sh
 flutter create --platforms=android,ios --org org.geopulse .
