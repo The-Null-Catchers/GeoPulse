@@ -90,3 +90,35 @@ test('Spatial searches render persisted GPS and containing geofences in native l
  await expect(page.getByTestId('spatial-summary')).toContainText('0 results on this page');
  await expect(map).toHaveAttribute('data-spatial-features','0');
 });
+
+test('Replay uses real stop/fence events, seeks on its timeline and clears changed ranges',async({page,request})=>{
+ const url=process.env.E2E_API_URL||'http://localhost:8000';
+ const email=`replay-${crypto.randomUUID()}@example.test`,password='replay-test-passphrase-123';
+ const registered=await request.post(url+'/api/v1/auth/register',{data:{email,password,name:'Replay QA',organization:'Replay QA fleet'}});
+ expect(registered.status()).toBe(201);const auth=await registered.json();
+ const headers={Authorization:'Bearer '+auth.access_token,'X-Workspace-ID':auth.workspace_id};
+ expect((await request.patch(url+'/api/v1/settings',{headers,data:{retention_days:90,offline_seconds:120,moving_speed:1.5,stop_seconds:30}})).ok()).toBeTruthy();
+ const created=await request.post(url+'/api/v1/devices',{headers,data:{name:'Replay tracker'}});expect(created.status()).toBe(201);const device=await created.json();
+ expect((await request.post(url+'/api/v1/geofences',{headers,data:{name:'Replay depot',center:[34.46,31.51],radius_m:100,dwell_seconds:10}})).status()).toBe(201);
+ const start=Date.now()-100000;
+ const points=[{seconds:0,speed:8,lng:34.46},{seconds:20,speed:0,lng:34.46},{seconds:60,speed:0,lng:34.46},{seconds:90,speed:8,lng:34.47}].map(p=>({event_id:crypto.randomUUID(),recorded_at:new Date(start+p.seconds*1000).toISOString(),lat:31.51,lng:p.lng,speed:p.speed,bearing:90,accuracy:5}));
+ expect((await request.post(url+'/api/v1/locations/batch',{headers:{Authorization:'Bearer '+device.token},data:{points}})).status()).toBe(202);
+ const params=new URLSearchParams({start:new Date(start-1000).toISOString(),end:new Date(start+100000).toISOString()});
+ await expect.poll(async()=>{const r=await request.get(url+'/api/v1/devices/'+device.id+'/replay/events?'+params,{headers});return r.ok()?(await r.json()).items.map((e:{kind:string})=>e.kind):[];},{timeout:15000}).toContain('stop.departure');
+ await page.goto('/');await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Open dashboard'}).click();
+ await page.getByRole('button',{name:/Replay tracker/}).click();await page.getByRole('button',{name:'Replay this device'}).click();
+ const day=new Date(start).toISOString().slice(0,10);await page.getByLabel('Replay UTC date').fill(day);
+ // Reload explicitly so the same scenario works across UTC midnight.
+ await page.getByRole('button',{name:'Load history',exact:true}).click();
+ await expect(page.locator('.replay-event-heading')).toContainText('4 points');
+ await expect(page.getByTestId('replay-event').filter({hasText:'geofence enter'})).toContainText('Replay depot');
+ const departure=page.getByTestId('replay-event').filter({hasText:'stop departure'});await expect(departure).toBeVisible();await departure.click();
+ await expect(page.getByLabel('Replay timeline')).toHaveValue(String(start+90000));
+ await expect(page.getByTestId('live-map')).toHaveAttribute('data-replay-events',/^[1-9]\d*$/);
+ await page.evaluate(()=>window.scrollTo(0,0));
+ await page.screenshot({path:'../../docs/screenshots/historical-replay.png',fullPage:true});
+ await page.getByLabel('Replay event filter').selectOption('stop.');await expect(page.getByTestId('replay-event')).toHaveCount(2);
+ await page.getByLabel('Replay start UTC').fill('23:59:58');
+ await expect(page.getByTestId('replay-event')).toHaveCount(0);
+ await expect(page.getByTestId('live-map')).toHaveAttribute('data-replay-events','0');
+});

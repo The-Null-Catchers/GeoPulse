@@ -318,6 +318,7 @@ async def maintenance():
         for table, column in (
             ("trips", "started_at"),
             ("stops", "arrived_at"),
+            ("geofence_events", "recorded_at"),
             ("alerts", "created_at"),
             ("location_snapshots", "created_at"),
         ):
