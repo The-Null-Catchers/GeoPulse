@@ -1,4 +1,3 @@
-import math
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from typing import Literal
@@ -84,9 +83,10 @@ def validate_polygon(value):
                 raise ValueError("At most 5,000 positions allowed")
             for position in ring:
                 if not isinstance(position, (list, tuple)) or len(position) != 2 or not all(
-                    type(x) in (int, float) and math.isfinite(x) for x in position
+                    type(x) in (int, float) for x in position
                 ):
                     raise ValueError("Invalid coordinate")
+                # Bounds reject NaN/infinity too, without converting large integers to float.
                 if not -180 <= position[0] <= 180 or not -90 <= position[1] <= 90:
                     raise ValueError("Coordinate out of bounds")
     return value
