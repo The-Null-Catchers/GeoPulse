@@ -1,54 +1,52 @@
-# GeoPulse — خطة البورتفيليو
+# GeoPulse portfolio roadmap
 
-مرجع التقييم الأساسي: 17 نوفمبر 2026. تحديث نشر الخطة داخل المستودع: 18 نوفمبر 2026.
+Baseline reviewed on November 17, 2026. Repository roadmap published on November 18, 2026.
 
-الخطة خاصة بهذا المستودع، ومستخلصة من خطة Null Catchers المشتركة. وصف «الموجود الموثق» يعكس المراجعة بتاريخها؛ تحقّق من الكود ووثائق الحالة الحالية قبل إنشاء مهمة جديدة. لا تعِد تنفيذ ميزة موجودة، ولا تعتبر وجود تعريف CI دليلًا على نجاح تشغيله.
+This roadmap applies to this repository and follows the shared Null Catchers portfolio plan. Verify the documented state against the current code and runs before starting work.
 
-**تقدير شريحة العرض الأولى:** 40–65 ساعة. التقدير تخطيطي لمطور يعرف المشروع، ويستثني انتظار حسابات المتاجر والمراجعات الخارجية وتجهيز بيئة الهدف. لا يغطي جميع بنود P2.
+**Estimated initial demo effort** 40–65 hours for a developer familiar with the project. The estimate excludes external reviews, store accounts, target environment setup, and later milestones.
 
-## الأولويات الخاصة بالمشروع
+## Project priorities
 
-**الموجود الموثق:** GPS → PostGIS → outbox → Redis/WebSocket، محاكٍ لنقاط GPS، وحدود جغرافية ورحلات وReplay. يدعم سجل الأجهزة البحث بالاسم على مستوى مساحة العمل. تتبع الهاتف في الخلفية يحتاج تحققًا على الأجهزة.
+**Documented state** GPS data flows through PostGIS, an outbox, and Redis/WebSocket. The project includes a simulator, geofences, trips, and replay. The registry searches across the workspace by name. Physical devices still need to verify background tracking.
 
-**P0 — نسخة العرض** جهّز سيناريو يعاد تشغيله من استقبال نقاط GPS إلى تسجيل حدث حدود جغرافية والتوقف وإعادة عرض الرحلة.
+**P0 — Demo** Build a reproducible route from GPS ingestion through geofence crossing, stop detection, and trip replay.
 
-**P1 — تحمل الانقطاع:** أضف cursor/resync دائمًا للعميل إذا تأكد غيابه، مع اختبار انقطاع WebSocket وإعادة التسجيل دون فقد/تكرار أحداث. اختبر النقاط القديمة وduplicates وسجل سياسة عدم إعادة اشتقاق الأحداث القديمة. اكمل auth lifecycle فقط بالقدر اللازم لحساب demo وحساب تشغيل حقيقي.
+**P1 — Validation and depth** Confirm whether durable cursors and resync are needed. Test reconnect, duplicates, and out-of-order points, and document the event recomputation policy. Validate authentication for demo and operator accounts.
 
-**P2 — لاحقًا:** background tracking بعد قياس البطارية والصلاحيات على أجهزة حقيقية. OSRM وroute editor بعد تجهيز dataset؛ لا تعرض nearest-neighbour/2-opt على أنه حل road-time VRP.
+**P2 — Later** Measure background tracking battery use and permissions on physical devices before expanding it. Consider OSRM and route editing after preparing data. Document what the route heuristics optimize.
 
-**معيار الإنجاز:** حركة من نقاط مخزنة لا animation وهمية، geofence event مرة واحدة وفق السياسة، فلترة كل corpus، replay مطابق للتوقيت، وتوضيح أن simulator اصطناعي وليس تتبع أشخاص حقيقيين.
+**Acceptance criteria** Stored GPS points drive replay at the recorded times. Search covers the workspace, and a qualifying geofence crossing creates one event. The simulator is identified as synthetic.
 
-**الديمو:** 20 جهازًا اصطناعيًا → مركبة تتجاوز نطاقًا → تنبيه → replay للرحلة. **الأدلة:** [README](https://github.com/The-Null-Catchers/GeoPulse/blob/main/README.md)، [Validation](https://github.com/The-Null-Catchers/GeoPulse/blob/main/docs/VALIDATION.md).
+**Demo scenario** Twenty simulated devices → vehicle crosses a geofence → alert → trip replay. [README](https://github.com/The-Null-Catchers/GeoPulse/blob/main/README.md), [Validation](https://github.com/The-Null-Catchers/GeoPulse/blob/main/docs/VALIDATION.md).
 
-## الدفعة التالية
+## Next milestones
 
-**ما ثبت حتى الآن**
+[PR #12](https://github.com/The-Null-Catchers/GeoPulse/pull/12) verified that the paged and filtered device registry can open a device outside the loaded list. The live map displays up to 1,000 loaded devices.
 
-البحث في سجل الأجهزة مع الفلاتر والصفحات مثبت في [PR #12](https://github.com/The-Null-Catchers/GeoPulse/pull/12). اختبر المتصفح فتح جهاز غير موجود في القائمة المحمّلة. الخريطة المباشرة تعرض الأجهزة المحمّلة فيها حتى حد 1,000 جهاز.
+1. [ ] Prepare a synthetic route with expected UTC times for crossing, stopping, and resuming. Confirm those timestamps in a new workspace.
+2. [ ] Resend the same GPS batch and replay the trip. Check for one crossing event and matching start, end, and stop times.
+3. [ ] Capture the map, alert, and replay from the same run. Record the SHA, data source, registry search scope, and map display scope.
 
-1. [ ] جهّز مسار GPS اصطناعيًا لمركبة واحدة من أسطول العرض، مع توقيت UTC متوقع لعبور الحد والتوقف والاستئناف. يُقبل البند عندما يعمل السيناريو على مساحة عمل جديدة ويطابق أوقات الأحداث المسجلة من نقاط GPS.
-2. [ ] أعد إرسال دفعة النقاط نفسها وشغّل عرض الرحلة. يُقبل البند عندما يظهر حدث العبور مرة واحدة، وتتطابق نقاط البداية والنهاية ووقت التوقف مع البيانات المخزنة.
-3. [ ] التقط الخريطة والتنبيه وReplay من التشغيل نفسه. يُقبل البند عندما يذكر وصف العرض SHA، ومصدر النقاط الاصطناعية، ونطاق البحث في سجل الأجهزة ونطاق عرض الخريطة.
+## Portfolio acceptance checklist
 
-## بوابة قبول نسخة البورتفيليو
+- [ ] Another person can reproduce the primary workflow from a clean checkout using the README and test credentials or fixtures.
+- [ ] The demo tells one complete story with a defined user, problem, and saved result.
+- [ ] Tests cover the main flow, an important failure, and access boundaries when multiple accounts are involved.
+- [ ] Demo data is labeled synthetic and reproducible. Review screenshots and recordings for secrets and customer data.
+- [ ] Include four to six real screenshots where appropriate, a 60–120 second recording, and working links. Identify the revision used for capture.
+- [ ] The README describes implemented capabilities, setup, architecture, limits, tests, and the demo.
+- [ ] A short case study explains two engineering decisions, a considered alternative, and how the system handles an actual failure.
+- [ ] Release evidence records the commit SHA, CI, prerequisites, and limits. Performance data includes workload, hardware, and method.
+- [ ] Licensing and contributor attribution are settled before distribution. Choose the license for each repository individually.
 
-- [ ] يستطيع شخص آخر تشغيل المسار الرئيسي من checkout نظيف، باتباع README، دون أسرار شخصية.
-- [ ] توجد قصة واحدة مكتملة: مستخدم محدد، مشكلة محددة، ومسار بداية إلى نتيجة محفوظة.
-- [ ] ينجح اختبار للمسار الرئيسي وحالة فشل مهمة، وتُختبر حدود الصلاحيات حيث توجد حسابات متعددة.
-- [ ] توجد بيانات عرض اصطناعية معلنة، قابلة لإعادة الإنشاء؛ ولا توجد بيانات عملاء أو أسرار في اللقطات.
-- [ ] توجد 4–6 لقطات حقيقية أو العدد الملائم للأداة، وفيديو 60–120 ثانية، وروابط تعمل. تُلتقط الأدلة من إصدار معروف.
-- [ ] README يوضح المزايا الفعلية، طريقة التشغيل، الرسم المعماري، القيود، وروابط الاختبارات والديمو.
-- [ ] Case study قصيرة تشرح قرارين هندسيين، بديلًا جرى استبعاده ولماذا، وفشلًا حقيقيًا وكيف يعالجه النظام.
-- [ ] صفحة Release تسجل SHA وCI والمتطلبات والقيود. لا تُنشر أرقام أداء دون workload وعتاد وطريقة قياس.
-- [ ] حُسمت سياسة الترخيص ونسب المساهمات قبل التوزيع؛ لا نختار ترخيصًا تلقائيًا لجميع المستودعات.
+A hosted demo is optional. Code execution, server administration, and secret management can be demonstrated through a recording and a reproducible isolated environment. Keep public demo access scoped to the activities it needs.
 
-الديمو المستضاف مفيد وليس شرطًا لكل أداة. أدوات تنفيذ الكود وإدارة الخوادم والأسرار يمكن عرضها بفيديو وبيئة معزولة وتجربة محلية قابلة للإعادة. لا تفتح تنفيذًا عامًا غير محدود لمجرد وجود رابط بورتفيليو.
+## Implementation and follow-up
 
-## التنفيذ والمتابعة
-
-- حوّل P0 إلى مهام صغيرة، لكل منها سلوك متوقع ومعيار قبول واختبار مناسب.
-- ابدأ بتأكيد الموجود؛ عدّل هذه الخطة عندما يغلق بند بدليل مرتبط بcommit أو PR.
-- سجّل مصدر بيانات الديمو، والـSHA الذي التُقطت منه الأدلة، وحدود التجربة الفعلية.
-- راجع الفرق النهائي وانتظر نجاح الفحوص المطلوبة لنفس SHA قبل الدمج، مع احترام حماية الفرع.
-- إذا كان التعديل وثائق فقط ولا يوجد فحص ينطبق عليه، سجّل التحقق من محتواها وروابطها؛ لا تسجل اختبارات تشغيل لم تُنفّذ.
-- لا تُنشر أرقام أداء أو ادعاءات أمان أو جاهزية إنتاج بلا دليل مناسب.
+- Break P0 into tasks with expected behavior, acceptance criteria, and a suitable test.
+- Verify existing functionality first. Update this plan when evidence tied to a commit or PR closes a milestone.
+- Record the fixture source, the revision used for evidence, and the tested limits.
+- Review the final diff and verify required checks for its exact SHA before merging. Follow branch protection.
+- For documentation-only changes with no applicable workflow, verify content and links and record the checks actually performed.
+- Tie performance, security, and readiness claims to supporting evidence.
