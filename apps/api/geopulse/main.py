@@ -7,6 +7,7 @@ import os
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 from uuid import UUID, uuid4
 import httpx
 from fastapi import FastAPI, Depends, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, Query
@@ -298,6 +299,9 @@ async def devices(
     status: str | None = None,
     team_id: UUID | None = None,
     q: str = Query("", max_length=100),
+    device_type: Literal["vehicle", "person", "asset", "iot"] | None = None,
+    active: bool | None = None,
+    unassigned: bool = False,
 ):
     query = q.strip()
     async with pool.connection() as conn:
@@ -316,8 +320,14 @@ async def devices(
           WHERE d.workspace_id=%s AND (%s::uuid IS NULL OR d.team_id=%s)
           AND (%s::text IS NULL OR fleet.state=%s)
           AND strpos(lower(d.name), lower(%s::text)) > 0
+          AND (%s::text IS NULL OR d.device_type=%s)
+          AND (%s::boolean IS NULL OR d.active=%s)
+          AND (NOT %s OR d.team_id IS NULL)
           ORDER BY d.name,d.id LIMIT %s OFFSET %s""",
-            (ws["id"], team_id, team_id, status, status, query, limit, offset),
+            (
+                ws["id"], team_id, team_id, status, status, query,
+                device_type, device_type, active, active, unassigned, limit, offset,
+            ),
         )
 
 
