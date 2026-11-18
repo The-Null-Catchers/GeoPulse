@@ -192,7 +192,7 @@ test('Replay verifies the synthetic route and deduplicates retried GPS points',a
  await expect(page.getByTestId('live-map')).toHaveAttribute('data-replay-events','0');
  await page.getByLabel('Replay end UTC').fill('12:00:00');
  await page.getByRole('button',{name:'Load history',exact:true}).click();
- await expect(page.getByRole('alert')).toContainText('Replay end time must be at or after the start time.');
+ await expect(page.getByRole('alert').filter({hasText:'Replay end time must be at or after the start time.'})).toBeVisible();
 });
 test('Late offline GPS repairs daily analytics without moving the live marker backwards',async({page,request})=>{
  const url=process.env.E2E_API_URL||'http://localhost:8000';
