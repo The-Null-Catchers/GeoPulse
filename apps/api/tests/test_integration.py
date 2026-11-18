@@ -119,6 +119,27 @@ def test_device_status_filter_matches_displayed_status_after_deactivation(client
     ]
 
 
+def test_fleet_search_filters_before_paging_within_workspace(client):
+    _, headers = account(client)
+    _, other_headers = account(client)
+    url = "/api/v1/devices"
+
+    for name in ("Alpha tracker", "Zebra asset", "Zebra asset %_"):
+        assert client.post(url, headers=headers, json={"name": name}).status_code == 201
+    assert client.post(url, headers=other_headers, json={"name": "Zebra asset %_"}).status_code == 201
+
+    def names(**params):
+        response = client.get(url, headers=headers, params=params)
+        assert response.status_code == 200
+        return [row["name"] for row in response.json()]
+
+    assert names(limit=1) == ["Alpha tracker"]
+    assert names(q="  zEBRA ", limit=1) == ["Zebra asset"]
+    assert names(q="zebra", limit=1, offset=1, status="unknown") == ["Zebra asset %_"]
+    assert names(q="%_") == ["Zebra asset %_"]
+    assert names(q="zebra", status="online") == []
+
+
 def test_geofence_enter_dwell_exit(client):
     a, h = account(client)
     dev = create_device(client, h)
