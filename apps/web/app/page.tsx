@@ -109,7 +109,13 @@ export default function Home(){
  useEffect(()=>{replayRequest.current++;setPoints([]);setReplayEvents([]);setPlaying(false);setReplayNote('');setReplayBusy(false);},[selected,date,replayStart,replayEnd,session]);
  async function loadReplay(){if(!selected){setError('Select a device first');return;}const scope=++replayRequest.current,workspaceScope=generation.current;
   const current=()=>scope===replayRequest.current&&workspaceScope===generation.current;setReplayBusy(true);setPlaying(false);setError('');setPoints([]);setReplayEvents([]);setReplayNote('');
-  try{const params=new URLSearchParams({start:new Date(date+'T'+replayStart+'Z').toISOString(),end:new Date(date+'T'+replayEnd+'.999Z').toISOString()});
+  try{
+   const start=new Date(date+'T'+replayStart+'Z'),end=new Date(date+'T'+replayEnd+'.999Z');
+   if(!Number.isFinite(start.getTime())||!Number.isFinite(end.getTime())){
+    setError('Choose a UTC date and both replay times.');return;
+   }
+   if(start>end){setError('Replay end time must be at or after the start time.');return;}
+   const params=new URLSearchParams({start:start.toISOString(),end:end.toISOString()});
    const [p,e]=await Promise.all([loadReplayPages<Point>(api,`/devices/${selected}/replay/points?${params}`,20000,1000,current),loadReplayPages<ReplayEvent>(api,`/devices/${selected}/replay/events?${params}`,5000,500,current)]);
    if(!current())return;setPoints(p.items);setReplayEvents(e.items);const first=[p.items[0]?.recorded_at,e.items[0]?.recorded_at].filter(Boolean).map(t=>Date.parse(t!));setCursor(first.length?Math.min(...first):0);
    setReplayNote([p.truncated?'Showing the first 20,000 GPS points; narrow the time range to load additional data.':'',e.truncated?'Showing the first 5,000 operational events.':'',!p.items.length?'No GPS points in the selected UTC day.':''].filter(Boolean).join(' '));
