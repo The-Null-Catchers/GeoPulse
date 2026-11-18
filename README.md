@@ -149,3 +149,7 @@ cd apps/web && npm run typecheck && npm test && npm run build
 ## Next release gates
 
 Complete mobile platform scaffolding and background lifecycle, integration-test the OSRM adapter against a real road dataset, rebuild derived histories after late points, expand management workflows/reports/search, and execute browser/hardware/security/release tests. Time partitioning and bulk-write optimization should follow measured requirements, with a 1,000-device soak run before any larger-scale claim.
+
+## Portfolio roadmap
+
+See the [repository-specific portfolio roadmap](PORTFOLIO_ROADMAP.md) for priorities, acceptance criteria, demo scope, and release evidence. This complements the existing implementation and status documentation.
