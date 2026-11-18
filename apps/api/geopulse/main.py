@@ -304,13 +304,15 @@ async def devices(
             """SELECT d.id,d.name,d.device_type,d.active,d.team_id,d.driver_id,d.vehicle_id,d.last_seen,
           s.recorded_at,s.speed,s.bearing,s.battery_level,
           CASE WHEN s.metric_date=(now() AT TIME ZONE 'UTC')::date THEN s.distance_today_m ELSE 0 END distance_today_m,
-          CASE WHEN NOT d.active THEN 'unknown' WHEN d.last_seen IS NULL THEN 'unknown'
-               WHEN d.last_seen<now()-make_interval(secs=>o.offline_seconds) THEN 'offline' ELSE coalesce(s.state,'online') END state,
-          ST_X(s.coordinates::geometry) lng, ST_Y(s.coordinates::geometry) lat
+          fleet.state, ST_X(s.coordinates::geometry) lng, ST_Y(s.coordinates::geometry) lat
           FROM devices d JOIN organizations o ON o.id=d.workspace_id LEFT JOIN device_status s ON s.device_id=d.id
+          CROSS JOIN LATERAL (VALUES (
+              CASE WHEN NOT d.active OR d.last_seen IS NULL THEN 'unknown'
+                   WHEN d.last_seen<now()-make_interval(secs=>o.offline_seconds) THEN 'offline'
+                   ELSE coalesce(s.state,'online') END
+          )) AS fleet(state)
           WHERE d.workspace_id=%s AND (%s::uuid IS NULL OR d.team_id=%s)
-          AND (%s::text IS NULL OR CASE WHEN d.last_seen IS NULL THEN 'unknown'
-            WHEN d.last_seen<now()-make_interval(secs=>o.offline_seconds) THEN 'offline' ELSE coalesce(s.state,'online') END=%s)
+          AND (%s::text IS NULL OR fleet.state=%s)
           ORDER BY d.name,d.id LIMIT %s OFFSET %s""",
             (ws["id"], team_id, team_id, status, status, limit, offset),
         )
