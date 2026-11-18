@@ -49,13 +49,52 @@ test('Fleet filters combine team, type, activation and search in the registry',a
  await page.getByLabel('Device type',{exact:true}).selectOption('person');await expect(page.locator('tbody tr')).toHaveCount(0);
  await page.getByRole('button',{name:'Clear filters'}).click();
  await page.getByLabel('Team',{exact:true}).selectOption('unassigned');await page.getByLabel('Activation',{exact:true}).selectOption('inactive');
+ const search=page.waitForResponse(response=>{
+  const params=new URL(response.url()).searchParams;
+  return params.get('q')==='STORED'&&params.get('active')==='false'&&params.get('unassigned')==='true';
+ });
  await page.getByLabel('Search devices',{exact:true}).fill(' STORED ');
+ expect((await search).ok()).toBeTruthy();
+ await expect(page.getByRole('status')).toHaveText('1–1 workspace search results');
  await expect(page.locator('tbody tr')).toHaveCount(1);await expect(page.locator('tbody')).toContainText('Stored asset');
  await page.getByRole('button',{name:'Clear filters'}).click();await expect(page.locator('tbody tr')).toHaveCount(3);
  await page.getByLabel('Team',{exact:true}).selectOption('unassigned');
  await page.getByRole('button',{name:'Sign out'}).click();
  await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Open dashboard'}).click();
  await expect(page.getByRole('status')).toHaveText('3 of 3 loaded devices');await expect(page.getByLabel('Team',{exact:true})).toHaveValue('all');
+});
+
+test('Registry search finds and opens devices beyond the loaded snapshot',async({page,request})=>{
+ const url=process.env.E2E_API_URL||'http://localhost:8000';
+ const email=`registry-${crypto.randomUUID()}@example.test`,password='registry-test-passphrase-123';
+ const registration=await request.post(url+'/api/v1/auth/register',{data:{email,password,name:'Registry QA',organization:'Registry QA fleet'}});
+ expect(registration.status()).toBe(201);
+ const auth=await registration.json();
+ const headers={Authorization:'Bearer '+auth.access_token,'X-Workspace-ID':auth.workspace_id};
+ for(const name of ['Alpha tracker','Zebra tracker']){
+  expect((await request.post(url+'/api/v1/devices',{headers,data:{name}})).status()).toBe(201);
+ }
+
+ await page.route('**/api/v1/devices?limit=1000',async route=>{
+  // Request a short snapshot from the same backend to put Zebra beyond it.
+  const snapshot=new URL(route.request().url());
+  snapshot.searchParams.set('limit','1');
+  await route.fulfill({response:await route.fetch({url:snapshot.href})});
+ });
+ await page.goto('/');
+ await page.getByLabel('Email',{exact:true}).fill(email);
+ await page.getByLabel('Password',{exact:true}).fill(password);
+ await page.getByRole('button',{name:'Open dashboard'}).click();
+ await page.getByRole('button',{name:'Devices',exact:true}).click();
+ await expect(page.getByRole('status')).toHaveText('1 of 1 loaded devices');
+ await expect(page.locator('tbody')).toContainText('Alpha tracker');
+ await page.getByLabel('Search devices',{exact:true}).fill('zebra');
+ const result=page.getByRole('button',{name:'Zebra tracker',exact:true});
+ await expect(result).toBeVisible();
+ await result.press('Enter');
+ await expect(page.getByRole('heading',{name:'Zebra tracker',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Clear filters'}).click();
+ await expect(page.locator('tbody')).toContainText('Alpha tracker');
 });
 
 test('Spatial searches render persisted GPS and containing geofences in native layers',async({page,request})=>{
