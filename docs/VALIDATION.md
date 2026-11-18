@@ -76,3 +76,16 @@ Remote validation: all seven jobs passed on run 37637940009 for commit 2ef813c. 
 Added migration 006, transactional per-device/day repair jobs, a PostGIS distance rebuild, bounded daily aggregate and administrative backfill APIs, and a daily Analytics view. Live positions stay monotonic; late points repair historical and snapshot distance only. Backfills are workspace-authorized and audited. History erasure removes pending jobs. Current validation is recorded on the increment's PR; full historical trip/stop/geofence reconciliation remains pending.
 
 Local Ruff/mypy/TypeScript, 49 Python tests, 13 web tests and a production build passed. The 23 real-PostGIS cases are skipped locally because PostgreSQL/Redis are unavailable. Six new integration regressions cover repairs, retries, midnight/gap/jump rules, erasure, ownership and retention before cleanup. A sixth browser scenario uses actual late ingestion and checks updated dashboard distance with a stable latest position. Remote verification remains pending until CI executes this head.
+
+### Synthetic trip replay
+
+The Chromium replay test ingests five points relative to noon UTC on the
+previous day. It crosses into the test depot at +10 s, stops at +20 s,
+then leaves at +90 s. The same batch is sent again with the same event
+IDs. The test checks that all five duplicates are ignored, that the stored
+points match the fixture, and that the enter, dwell, exit, arrival and
+departure events appear once at the expected times.
+
+The `browser-evidence` artifact contains `synthetic-trip-evidence.json`
+and the historical replay screenshot. The JSON records the points and
+the verified event sequence. The workflow run identifies the tested SHA.
