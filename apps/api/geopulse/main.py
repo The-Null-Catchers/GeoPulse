@@ -297,7 +297,9 @@ async def devices(
     offset: int = Query(0, ge=0),
     status: str | None = None,
     team_id: UUID | None = None,
+    q: str = Query("", max_length=100),
 ):
+    query = q.strip()
     async with pool.connection() as conn:
         return await many(
             conn,
@@ -313,8 +315,9 @@ async def devices(
           )) AS fleet(state)
           WHERE d.workspace_id=%s AND (%s::uuid IS NULL OR d.team_id=%s)
           AND (%s::text IS NULL OR fleet.state=%s)
+          AND strpos(lower(d.name), lower(%s::text)) > 0
           ORDER BY d.name,d.id LIMIT %s OFFSET %s""",
-            (ws["id"], team_id, team_id, status, status, limit, offset),
+            (ws["id"], team_id, team_id, status, status, query, limit, offset),
         )
 
 
