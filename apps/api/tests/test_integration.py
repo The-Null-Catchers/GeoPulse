@@ -102,6 +102,23 @@ def test_ingestion_isolation_idempotency_spatial_history(client):
     assert client.post("/api/v1/locations", headers=dh, json=gps()).status_code == 401
 
 
+def test_device_status_filter_matches_displayed_status_after_deactivation(client):
+    _, headers = account(client)
+    dev = create_device(client, headers)
+    device_headers = {"Authorization": "Bearer " + dev["token"]}
+    assert client.post("/api/v1/devices/heartbeat", headers=device_headers).status_code == 200
+    url = "/api/v1/devices"
+    assert [(row["id"], row["state"]) for row in client.get(url + "?status=online", headers=headers).json()] == [
+        (dev["id"], "online")
+    ]
+
+    assert client.patch(url + "/" + dev["id"], headers=headers, json={"active": False}).status_code == 200
+    assert client.get(url + "?status=online", headers=headers).json() == []
+    assert [(row["id"], row["state"]) for row in client.get(url + "?status=unknown", headers=headers).json()] == [
+        (dev["id"], "unknown")
+    ]
+
+
 def test_geofence_enter_dwell_exit(client):
     a, h = account(client)
     dev = create_device(client, h)
