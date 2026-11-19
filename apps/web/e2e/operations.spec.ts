@@ -170,10 +170,19 @@ test('Replay verifies the synthetic route and deduplicates retried GPS points',a
  expect(replayPoints.map(p=>[p.event_id,Date.parse(p.recorded_at),p.lng,p.lat])).toEqual(
   points.map(p=>[p.event_id,Date.parse(p.recorded_at),p.lng,p.lat]),
  );
- await writeFile(testInfo.outputPath('synthetic-trip-evidence.json'),JSON.stringify({
-  source:'Synthetic browser fixture',startUtc:routeDate.toISOString(),
-  inserted:5,duplicatesIgnored:5,points,replayEvents:expectedEvents.map(e=>({...e,time:new Date(e.time).toISOString()})),
- },null,2)+'\n');
+ const trips = await request.get(url + '/api/v1/trips', { headers });
+ expect(trips.ok()).toBeTruthy();
+ const tripRows = await trips.json() as {device_id:string;started_at:string;ended_at:string|null}[];
+ const deviceTrips = tripRows.filter(trip => trip.device_id === device.id).reverse();
+ expect(deviceTrips.map(trip => [
+  Date.parse(trip.started_at), trip.ended_at ? Date.parse(trip.ended_at) : null,
+ ])).toEqual([[start, start + 60_000], [start + 90_000, null]]);
+
+ const stops = await request.get(url + '/api/v1/stops?device_id=' + device.id, { headers });
+ expect(stops.ok()).toBeTruthy();
+ const stopRows = await stops.json() as {arrived_at:string;departed_at:string}[];
+ expect(stopRows.map(stop => [Date.parse(stop.arrived_at), Date.parse(stop.departed_at)]))
+  .toEqual([[start + 20_000, start + 90_000]]);
  await page.goto('/');await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Open dashboard'}).click();
  await page.getByRole('button',{name:/Replay tracker/}).click();await page.getByRole('button',{name:'Replay this device'}).click();
  const day=new Date(start).toISOString().slice(0,10);await page.getByLabel('Replay UTC date').fill(day);
@@ -181,11 +190,16 @@ test('Replay verifies the synthetic route and deduplicates retried GPS points',a
  await page.getByRole('button',{name:'Load history',exact:true}).click();
  await expect(page.locator('.replay-event-heading')).toContainText('5 points');
  await expect(page.getByTestId('replay-event').filter({hasText:'geofence enter'})).toContainText('Replay depot');
+ await page.getByLabel('Replay event filter').selectOption('alert.');
+ await expect(page.getByTestId('replay-event').filter({hasText:'alert created'})).toHaveCount(1);
+ await page.screenshot({path:testInfo.outputPath('synthetic-trip-alert.png'),fullPage:true});
+ await page.getByLabel('Replay event filter').selectOption('all');
  const departure=page.getByTestId('replay-event').filter({hasText:'stop departure'});await expect(departure).toBeVisible();await departure.click();
  await expect(page.getByLabel('Replay timeline')).toHaveValue(String(start+90000));
  await expect(page.getByTestId('live-map')).toHaveAttribute('data-replay-events',/^[1-9]\d*$/);
  await page.evaluate(()=>window.scrollTo(0,0));
  await page.screenshot({path:'../../docs/screenshots/historical-replay.png',fullPage:true});
+ await page.screenshot({path:testInfo.outputPath('synthetic-trip-map-replay.png'),fullPage:true});
  await page.getByLabel('Replay event filter').selectOption('stop.');await expect(page.getByTestId('replay-event')).toHaveCount(2);
  await page.getByLabel('Replay start UTC').fill('23:59:58');
  await expect(page.getByTestId('replay-event')).toHaveCount(0);
@@ -193,6 +207,19 @@ test('Replay verifies the synthetic route and deduplicates retried GPS points',a
  await page.getByLabel('Replay end UTC').fill('12:00:00');
  await page.getByRole('button',{name:'Load history',exact:true}).click();
  await expect(page.getByRole('alert').filter({hasText:'Replay end time must be at or after the start time.'})).toBeVisible();
+ await writeFile(testInfo.outputPath('synthetic-trip-evidence.json'), JSON.stringify({
+  source: 'Synthetic browser fixture',
+  checkoutSha: process.env.GITHUB_SHA ?? null,
+  workflowRunId: process.env.GITHUB_RUN_ID ?? null,
+  browser: page.context().browser()?.version() ?? null,
+  startUtc: routeDate.toISOString(),
+  inserted: 5,
+  duplicatesIgnored: 5,
+  points,
+  trips: deviceTrips,
+  stops: stopRows,
+  replayEvents: expectedEvents.map(event => ({...event, time: new Date(event.time).toISOString()})),
+ }, null, 2) + '\n');
 });
 test('Late offline GPS repairs daily analytics without moving the live marker backwards',async({page,request})=>{
  const url=process.env.E2E_API_URL||'http://localhost:8000';
