@@ -22,11 +22,13 @@ This roadmap applies to this repository and follows the shared Null Catchers por
 
 ## Next milestones
 
+Verified checkpoint: [PR #17](https://github.com/The-Null-Catchers/GeoPulse/pull/17) is merged. [GeoPulse CI run 44442264670](https://github.com/The-Null-Catchers/GeoPulse/actions/runs/44442264670) completed successfully and published the `browser-evidence` artifact, covering the synthetic route, persisted trip boundaries, stop detection, duplicate resend, map, and alert evidence.
+
 [PR #12](https://github.com/The-Null-Catchers/GeoPulse/pull/12) verified that the paged and filtered device registry can open a device outside the loaded list. The live map displays up to 1,000 loaded devices.
 
-1. [ ] Prepare a synthetic route with expected UTC times for crossing, stopping, and resuming. Confirm those timestamps in a new workspace.
-2. [ ] Resend the same GPS batch and replay the trip. Check for one crossing event and matching start, end, and stop times.
-3. [ ] Capture the map, alert, and replay from the same run. Record the SHA, data source, registry search scope, and map display scope.
+1. [x] Prepare a synthetic route with expected UTC times for crossing, stopping, and resuming. Confirm those timestamps in a new workspace. Verified by [PR #17](https://github.com/The-Null-Catchers/GeoPulse/pull/17).
+2. [x] Resend the same GPS batch and replay the trip. Check for one crossing event and matching start, end, and stop times. Verified by [PR #17](https://github.com/The-Null-Catchers/GeoPulse/pull/17).
+3. [x] Capture the map, alert, and replay from the same run. Record the SHA, data source, registry search scope, and map display scope. Evidence is retained in the `browser-evidence` artifact for [run 44442264670](https://github.com/The-Null-Catchers/GeoPulse/actions/runs/44442264670).
 
 ## Portfolio acceptance checklist
 
